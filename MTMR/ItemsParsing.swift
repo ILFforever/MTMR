@@ -275,6 +275,7 @@ enum ItemType: Decodable {
     case music(interval: Double, disableMarquee: Bool)
     case group(items: [BarItemDefinition])
     case popover(items: [BarItemDefinition], pressAndHold: Bool, autoClose: Double?, liveIcon: Bool)
+    case cluster(items: [BarItemDefinition], options: ClusterOptions)
     case nightShift
     case dnd
     case pomodoro(workTime: Double, restTime: Double)
@@ -317,7 +318,9 @@ enum ItemType: Decodable {
         case pressAndHold
         case autoClose
         case liveIcon
-        case showIcon, showPercentage, percentInside, showTime, animate, lowThreshold, tapToCycle
+        case showIcon, showPercentage, percentInside, showTime, animate, lowThreshold, tapToCycle, holdOpens
+        case panelCloseSide, panelTiles, panelGraphHours, panelBarMinutes
+        case dividers, spacing, itemWidth, padding
     }
 
     enum ItemTypeRaw: String, Decodable {
@@ -337,6 +340,7 @@ enum ItemType: Decodable {
         case music
         case group
         case popover
+        case cluster
         case nightShift
         case dnd
         case pomodoro
@@ -434,6 +438,15 @@ enum ItemType: Decodable {
             let autoClose = try container.decodeIfPresent(Double.self, forKey: .autoClose)
             let liveIcon = try container.decodeIfPresent(Bool.self, forKey: .liveIcon) ?? true
             self = .popover(items: items, pressAndHold: pressAndHold, autoClose: autoClose, liveIcon: liveIcon)
+
+        case .cluster:
+            let items = try container.decodeIfPresent([BarItemDefinition].self, forKey: .items) ?? []
+            var options = ClusterOptions()
+            options.dividers = try container.decodeIfPresent(Bool.self, forKey: .dividers) ?? options.dividers
+            options.spacing = try container.decodeIfPresent(CGFloat.self, forKey: .spacing) ?? options.spacing
+            options.itemWidth = try container.decodeIfPresent(CGFloat.self, forKey: .itemWidth)
+            options.padding = try container.decodeIfPresent(CGFloat.self, forKey: .padding)
+            self = .cluster(items: items, options: options)
 
         case .nightShift:
             self = .nightShift

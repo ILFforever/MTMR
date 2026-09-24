@@ -55,6 +55,8 @@ extension ItemType {
             return "com.toxblh.mtmr.groupBar."
         case .popover:
             return "com.ilfforever.stripe.popover."
+        case .cluster:
+            return "com.ilfforever.stripe.cluster."
         case .nightShift:
             return "com.toxblh.mtmr.nightShift."
         case .dnd:
@@ -199,11 +201,17 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         // Rebuild only when the set of visible items changes (e.g. an app switch
         // that toggles a "when" condition), and stop the items being replaced.
         let visible = Set(itemDefinitions.filter { isVisible($0.value) }.keys)
+        // Items inside a cluster show and hide in place, without a rebuild.
+        for case let cluster as ClusterBarItem in items.values {
+            cluster.updateVisibility()
+        }
+        updateActiveStates(items.values)
         if visible == visibleIdentifiers {
             return
         }
         visibleIdentifiers = visible
         let created = createItems(visible)
+        updateActiveStates(created)
 
         let centerItems = centerIdentifiers.compactMap({ (identifier) -> NSTouchBarItem? in
             items[identifier]
@@ -379,6 +387,15 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         return created
     }
 
+    /// Turns items with an "activeWhen" rule on or off.
+    func updateActiveStates<S: Sequence>(_ items: S) where S.Element == NSTouchBarItem {
+        for case let button as CustomButtonTouchBarItem in items {
+            if let rule = button.style.activeWhen {
+                button.isActive = rule.isSatisfied(frontmost: NSWorkspace.shared.frontmostApplication)
+            }
+        }
+    }
+
     /// Whether an item's "when" condition (if any) currently holds.
     func isVisible(_ definition: BarItemDefinition) -> Bool {
         guard case let .when(condition)? = definition.additionalParameters[.when] else { return true }
@@ -498,6 +515,8 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         case let .popover(items: items, pressAndHold: pressAndHold, autoClose: autoClose, liveIcon: liveIcon):
             barItem = PopoverBarItem(identifier: identifier, items: items, pressAndHold: pressAndHold, autoClose: autoClose,
                                      align: item.align, liveIcon: liveIcon)
+        case let .cluster(items: items, options: options):
+            barItem = ClusterBarItem(identifier: identifier, items: items, options: options, definition: item, bar: self)
         case .nightShift:
             barItem = NightShiftBarItem(identifier: identifier)
         case .dnd:

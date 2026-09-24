@@ -8,6 +8,9 @@
 //    "symbol": "cpu", "iconColor": "#34C759",
 //    "fontSize": 13, "fontWeight": "semibold", "textColor": "orange",
 //    "monospacedDigits": true, "cornerRadius": 8   // or "style": "pill"
+//    "pressedBackground": "#636366"                 // while touched
+//    "activeBackground": "green",                   // while the item is on:
+//    "activeWhen": { "app": "Safari" }              //   toggles know; other items use a rule
 //
 
 import AppKit
@@ -20,6 +23,11 @@ struct ItemStyle {
     var cornerRadius: CGFloat?
     var symbol: String?
     var iconColor: NSColor?
+    var pressedBackground: NSColor?
+    var activeBackground: NSColor?
+    /// When the item counts as on, for items that don't know it themselves
+    /// (toggles like Do Not Disturb do). Same rules as "when".
+    var activeWhen: ItemCondition?
 
     static let barHeight: CGFloat = 30
     static let defaultFontSize: CGFloat = 15
@@ -74,6 +82,7 @@ struct ItemStyle {
 extension ItemStyle: Decodable {
     private enum CodingKeys: String, CodingKey {
         case fontSize, fontWeight, textColor, monospacedDigits, cornerRadius, symbol, iconColor, style
+        case pressedBackground, activeBackground, activeWhen
     }
 
     init(from decoder: Decoder) throws {
@@ -85,6 +94,9 @@ extension ItemStyle: Decodable {
         cornerRadius = try c.decodeIfPresent(CGFloat.self, forKey: .cornerRadius)
         symbol = try c.decodeIfPresent(String.self, forKey: .symbol)
         iconColor = try c.decodeIfPresent(String.self, forKey: .iconColor)?.namedOrHexColor
+        pressedBackground = try c.decodeIfPresent(String.self, forKey: .pressedBackground)?.namedOrHexColor
+        activeBackground = try c.decodeIfPresent(String.self, forKey: .activeBackground)?.namedOrHexColor
+        activeWhen = try c.decodeIfPresent(ItemCondition.self, forKey: .activeWhen)
         if try c.decodeIfPresent(String.self, forKey: .style) == "pill", cornerRadius == nil {
             cornerRadius = ItemStyle.barHeight / 2
         }

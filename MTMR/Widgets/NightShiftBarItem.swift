@@ -49,6 +49,7 @@ class NightShiftBarItem: CustomButtonTouchBarItem, TearDownable {
 
     @objc func refresh() {
         image = isNightShiftEnabled ? #imageLiteral(resourceName: "nightShiftOn") : #imageLiteral(resourceName: "nightShiftOff")
+        setBuiltInActive(isNightShiftEnabled)
     }
 
     func tearDown() {

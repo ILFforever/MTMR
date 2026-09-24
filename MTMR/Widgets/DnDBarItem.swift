@@ -38,6 +38,7 @@ class DnDBarItem: CustomButtonTouchBarItem, TearDownable {
 
     @objc func refresh() {
         image = DoNotDisturb.isEnabled ? #imageLiteral(resourceName: "dnd-on") : #imageLiteral(resourceName: "dnd-off")
+        setBuiltInActive(DoNotDisturb.isEnabled)
     }
 }
 

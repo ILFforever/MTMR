@@ -56,6 +56,7 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
         multiClick.delegate = self
         multiClick.isDoubleClickEnabled = false
         multiClick.isTripleClickEnabled = false
+        multiClick.onTouch = { [weak self] down in self?.isPressed = down }
 
         reinstallButton()
         button.attributedTitle = displayedTitle
@@ -80,6 +81,24 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
         didSet {
             reinstallButton()
         }
+    }
+
+    /// Whether the item is on (a toggle that's enabled, or its "activeWhen" rule
+    /// holds); shows `style.activeBackground`.
+    var isActive = false {
+        didSet { if isActive != oldValue { applyStateBackground() } }
+    }
+
+    /// For items that know their own state: sets `isActive` unless the preset
+    /// decides it with an "activeWhen" rule.
+    func setBuiltInActive(_ active: Bool) {
+        if style.activeWhen == nil { isActive = active }
+    }
+
+    /// True while a finger is on the item; shows `style.pressedBackground`.
+    /// Settable so debug hooks can hold an item down for a screenshot.
+    var isPressed = false {
+        didSet { if isPressed != oldValue { applyStateBackground() } }
     }
 
     /// Extra space on each side of the content, for items whose content would
@@ -181,7 +200,27 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
         view.addGestureRecognizer(longClick)
         // view.addGestureRecognizer(singleClick)
         view.addGestureRecognizer(multiClick)
+        applyStateBackground()
         finishViewConfiguration()
+    }
+
+    /// The pressed or active color when one applies, else the normal background.
+    /// Only colors change here, so a press doesn't rebuild the button mid-touch.
+    private func applyStateBackground() {
+        guard let button = button else { return }
+        var color = backgroundColor
+        if isPressed, let pressed = style.pressedBackground {
+            color = pressed
+        } else if isActive, let active = style.activeBackground {
+            color = active
+        }
+        if button.isBordered {
+            button.bezelColor = color
+        } else if color != nil || button.wantsLayer {
+            button.wantsLayer = true
+            button.layer?.backgroundColor = color?.cgColor
+            button.layer?.cornerRadius = style.cornerRadius ?? 6
+        }
     }
 
     func gestureRecognizer(_ gestureRecognizer: NSGestureRecognizer, shouldRequireFailureOf otherGestureRecognizer: NSGestureRecognizer) -> Bool {
@@ -318,6 +357,8 @@ final class MultiClickGestureRecognizer: NSClickGestureRecognizer {
     
     public var isDoubleClickEnabled = true
     public var isTripleClickEnabled = true
+    /// Called with true when a touch starts and false when it ends.
+    var onTouch: ((Bool) -> Void)?
 
     override var action: Selector? {
         get {
@@ -342,11 +383,18 @@ final class MultiClickGestureRecognizer: NSClickGestureRecognizer {
     
     override func touchesBegan(with event: NSEvent) {
         HapticFeedback.instance.tap(type: .click)
+        onTouch?(true)
         super.touchesBegan(with: event)
+    }
+
+    override func touchesCancelled(with event: NSEvent) {
+        onTouch?(false)
+        super.touchesCancelled(with: event)
     }
 
     override func touchesEnded(with event: NSEvent) {
         HapticFeedback.instance.tap(type: .back)
+        onTouch?(false)
         super.touchesEnded(with: event)
         _clickCount += 1
         

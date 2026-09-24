@@ -398,17 +398,31 @@ struct ItemTypeInfo {
     let category: String
     let defaults: [String: JSONValue]
     let fields: [FieldSpec]
-    var isContainer: Bool { type == "group" || type == "popover" }
+    var isContainer: Bool { ["group", "popover", "cluster"].contains(type) }
 
     // What the inspector offers for this type, so it only shows controls that do something.
 
     /// Swipe gestures aren't drawn on the bar.
     var isVisibleOnBar: Bool { type != "swipe" }
     /// Buttons (and popovers, which are buttons) take the full set of styling options.
-    var supportsButtonStyling: Bool { !["group", "volume", "brightness", "swipe"].contains(type) }
+    var supportsButtonStyling: Bool { !["group", "cluster", "volume", "brightness", "swipe"].contains(type) }
+    /// Clusters take a background and shape for the key their items share.
+    var supportsBackground: Bool { supportsButtonStyling || type == "cluster" }
     /// Groups show just an icon or title for their collapsed button.
     var supportsIcon: Bool { supportsButtonStyling || type == "group" }
     var supportsActions: Bool { !isContainer && !["volume", "brightness", "swipe"].contains(type) }
+    /// What "active" means for items that know their own on/off state.
+    var builtInActiveState: String? {
+        switch type {
+        case "dnd": return "Do Not Disturb is on"
+        case "nightShift": return "Night Shift is on"
+        case "darkMode": return "Dark Mode is on"
+        case "mute": return "the sound is muted"
+        case "play": return "something is playing"
+        case "pomodoro": return "a timer is running"
+        default: return nil
+        }
+    }
     /// Media keys and similar read best as icons alone (on the bar canvas too).
     var isIconOnly: Bool { category == "Media" || category == "Keys" || type == "close" }
 }
@@ -510,9 +524,15 @@ enum ItemCatalog {
                      fields: [FieldSpec(path: "pressAndHold", label: "Press and hold to slide", kind: .toggle(default: false)),
                               FieldSpec(path: "liveIcon", label: "Icon shows the volume level", kind: .toggle(default: true)),
                               FieldSpec(path: "autoClose", label: "Auto-close after (s)", kind: .number(placeholder: "never"))]),
-        ItemTypeInfo(type: "group", name: "Group", symbol: "folder", category: "Containers",
+        ItemTypeInfo(type: "cluster", name: "Group", symbol: "rectangle.split.3x1", category: "Containers",
+                     defaults: ["itemWidth": .number(40)],
+                     fields: [FieldSpec(path: "dividers", label: "Dividers between items", kind: .toggle(default: false)),
+                              FieldSpec(path: "itemWidth", label: "Minimum item width", kind: .number(placeholder: "Automatic")),
+                              FieldSpec(path: "spacing", label: "Space between items", kind: .number(placeholder: "0")),
+                              FieldSpec(path: "padding", label: "Padding at the ends", kind: .number(placeholder: "Automatic"))]),
+        ItemTypeInfo(type: "group", name: "Folder", symbol: "folder", category: "Containers",
                      defaults: ["symbol": .string("folder.fill")], fields: []),
-        simple("close", "Close Group", "chevron.left", "Containers"),
+        simple("close", "Close Folder", "chevron.left", "Containers"),
 
         // Other
         ItemTypeInfo(type: "swipe", name: "Swipe Gesture", symbol: "hand.draw", category: "Other",
@@ -540,7 +560,7 @@ enum ItemCatalog {
         var fields = info.defaults
         fields["type"] = .string(type)
         if align != "center" { fields["align"] = .string(align) }
-        if info.isContainer {
+        if info.isContainer, fields["items"] == nil {
             fields["items"] = .array([])
         }
         return EditorItem(fields: fields, document: document)

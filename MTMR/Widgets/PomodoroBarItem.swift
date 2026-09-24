@@ -44,7 +44,9 @@ class PomodoroBarItem: CustomButtonTouchBarItem, Widget, TearDownable {
     private let defaultTitle = "🍅 "
     private let workTime: TimeInterval
     private let restTime: TimeInterval
-    private var typeTime: TimeTypes = .none
+    private var typeTime: TimeTypes = .none {
+        didSet { setBuiltInActive(typeTime != .none) }
+    }
     private var timer: DispatchSourceTimer?
 
     private var timeLeft: Int = 0

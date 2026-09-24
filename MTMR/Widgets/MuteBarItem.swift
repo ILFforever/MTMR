@@ -39,6 +39,7 @@ class MuteBarItem: CustomButtonTouchBarItem, TearDownable {
         var live = style
         live.symbol = observer.speakerSymbol
         image = live.symbolImage
+        setBuiltInActive(observer.isMuted)
     }
 
     private func toggle() {

@@ -33,6 +33,7 @@ class DarkModeBarItem: CustomButtonTouchBarItem, Widget, TearDownable {
 
     @objc func refresh() {
         image = DarkMode.isEnabled ? #imageLiteral(resourceName: "dark-mode-on") : #imageLiteral(resourceName: "dark-mode-off")
+        setBuiltInActive(DarkMode.isEnabled)
     }
 }
 

@@ -526,8 +526,7 @@ struct ContainerItemsEditor: View {
         VStack(alignment: .leading, spacing: 0) {
             let children = container.children ?? []
             if children.isEmpty {
-                Text(container.type == "popover" ? "Empty. Add what it should expand into, such as a Volume Slider."
-                                                 : "Empty. Add the items it should open.")
+                Text(emptyMessage)
                     .foregroundColor(.secondary)
                     .padding(.vertical, 8)
             }
@@ -553,6 +552,14 @@ struct ContainerItemsEditor: View {
             }
             .fixedSize()
             .padding(.vertical, 8)
+        }
+    }
+
+    private var emptyMessage: String {
+        switch container.type {
+        case "popover": return "Empty. Add what it should expand into, such as a Volume Slider."
+        case "cluster": return "Empty. Add the items to show together, such as Previous, Play / Pause and Next."
+        default: return "Empty. Add the items it should open."
         }
     }
 
