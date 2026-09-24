@@ -235,16 +235,19 @@ final class PresetDocument: ObservableObject {
     /// Puts a top-level item at `index` within a position's section, moving it
     /// there if it's already on the bar. Used by drag and drop on the bar canvas.
     func place(_ item: EditorItem, align: String, at index: Int) {
-        items.removeAll { $0 === item }
+        // Built on a copy and assigned once, so observers see one change, not three.
+        var list = items
+        list.removeAll { $0 === item }
         if item.align != align { item.align = align }
-        let section = items(aligned: align)
-        if index < section.count, let target = items.firstIndex(where: { $0 === section[index] }) {
-            items.insert(item, at: target)
-        } else if let last = section.last, let target = items.firstIndex(where: { $0 === last }) {
-            items.insert(item, at: target + 1)
+        let section = list.filter { $0.align == align }
+        if index < section.count, let target = list.firstIndex(where: { $0 === section[index] }) {
+            list.insert(item, at: target)
+        } else if let last = section.last, let target = list.firstIndex(where: { $0 === last }) {
+            list.insert(item, at: target + 1)
         } else {
-            items.append(item)
+            list.append(item)
         }
+        items = list
         scheduleSave()
     }
 
@@ -274,13 +277,33 @@ final class PresetDocument: ObservableObject {
 
     // MARK: Saving
 
-    func scheduleSave() {
+    func scheduleSave(after delay: TimeInterval = 0.5) {
         objectWillChange.send()
+        if holdsSaves {
+            needsSave = true
+            return
+        }
         saveWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.save() }
         saveWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
+
+    /// Edits the bar hasn't loaded yet.
+    var hasPendingSave: Bool { needsSave || (saveWork.map { !$0.isCancelled } ?? false) }
+
+    /// While true (during a drag on the bar), edits wait until the drop instead of
+    /// saving, so the real bar doesn't reload under the pointer on every hover.
+    var holdsSaves = false {
+        didSet {
+            if !holdsSaves, needsSave {
+                needsSave = false
+                // Soon after the drop, once the editor has drawn the result.
+                scheduleSave(after: 0.1)
+            }
+        }
+    }
+    private var needsSave = false
 
     func flushSave() {
         if let work = saveWork, !work.isCancelled {

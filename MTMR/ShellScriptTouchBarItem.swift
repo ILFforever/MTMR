@@ -20,7 +20,8 @@ class ShellScriptTouchBarItem: CustomButtonTouchBarItem {
     init?(identifier: NSTouchBarItem.Identifier, source: SourceProtocol, interval: TimeInterval) {
         self.interval = interval
         self.source = source.string ?? "echo No \"source\""
-        super.init(identifier: identifier, title: "⏳")
+        super.init(identifier: identifier, title: "")
+        hideUntilFirstTitle()
         
         forceHideConstraint = view.widthAnchor.constraint(equalToConstant: 0)
         

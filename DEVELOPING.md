@@ -72,6 +72,8 @@ object is a command:
 | `tap NAME` | Tap the first item whose identifier contains NAME (e.g. `tap battery`) |
 | `settings` | Open the Settings window |
 | `select N` | Select the Nth top-level item in Settings |
+| `pane NAME` | Show the Settings sidebar's `library` or `outline` |
+| `search TEXT` | Type TEXT into the Settings sidebar's search |
 
 A one-line sender:
 

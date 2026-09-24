@@ -11,8 +11,10 @@ import SwiftUI
 struct ItemInspector: View {
     @ObservedObject var item: EditorItem
     let isTopLevel: Bool
-    /// The editor's selection, so the Items section can open a child.
-    let selection: Binding<UUID?>
+    /// For the Items section to open a child. A plain reference, not a Binding:
+    /// SwiftUI can't tell a Binding is unchanged, so it would rebuild this whole
+    /// form every time the window redraws (e.g. on each reorder during a drag).
+    let session: EditorSession
 
     @AppStorage("inspector.layout") private var layoutOpen = true
     @AppStorage("inspector.appearance") private var appearanceOpen = true
@@ -24,8 +26,9 @@ struct ItemInspector: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 16) {
                 header
+                    .padding(.bottom, 4)
 
                 if item.info.isVisibleOnBar {
                     InspectorSection(title: "Layout", symbol: "rectangle.split.3x1", isExpanded: $layoutOpen) {
@@ -38,7 +41,7 @@ struct ItemInspector: View {
                                 }
                                 .pickerStyle(.segmented)
                                 .labelsHidden()
-                                .frame(maxWidth: 220)
+                                .fixedSize()
                             }
                         }
                         if item.info.supportsIcon && !item.info.fields.contains(where: { $0.path == "title" }) {
@@ -71,7 +74,7 @@ struct ItemInspector: View {
 
                 if item.info.isContainer {
                     InspectorSection(title: "Items", symbol: "square.stack", isExpanded: $itemsOpen) {
-                        ContainerItemsEditor(container: item, selection: selection)
+                        ContainerItemsEditor(container: item, session: session)
                     }
                 }
 
@@ -113,10 +116,13 @@ struct ItemInspector: View {
 
     private var header: some View {
         HStack(spacing: 12) {
+            // Drawn like a key on the bar.
             Image(systemName: item.displaySymbol)
-                .font(.system(size: 22))
+                .font(.system(size: 20))
+                .foregroundColor(.white)
                 .frame(width: 44, height: 44)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Color.accentColor.opacity(0.15)))
+                .background(RoundedRectangle(cornerRadius: EditorStyle.boxRadius).fill(Color(white: 0.16)))
+                .overlay(RoundedRectangle(cornerRadius: EditorStyle.boxRadius).stroke(Color.white.opacity(0.08)))
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.displayName).font(.title2.weight(.semibold))
                 Text(subtitle).foregroundColor(.secondary)
@@ -266,7 +272,8 @@ struct ActionsEditor: View {
             }
         }
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .windowBackgroundColor)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(nsColor: .separatorColor), lineWidth: 0.5))
     }
 
     // MARK: Editing
@@ -486,6 +493,7 @@ struct AppRuleRow: View {
             HStack(spacing: 6) {
                 TextField(placeholder, text: $text)
                     .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: EditorStyle.fieldWidth)
                 Menu {
                     ForEach(PresetLibrary.runningApps(), id: \.bundleId) { app in
                         Button(app.name) { add(app.name) }
@@ -512,7 +520,7 @@ struct AppRuleRow: View {
 /// The items inside a group or popover: open one to edit it, reorder, remove, or add.
 struct ContainerItemsEditor: View {
     @ObservedObject var container: EditorItem
-    let selection: Binding<UUID?>
+    let session: EditorSession
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -527,7 +535,7 @@ struct ContainerItemsEditor: View {
                 ChildRow(child: child,
                          canMoveUp: index > 0,
                          canMoveDown: index < children.count - 1,
-                         open: { selection.wrappedValue = child.id },
+                         open: { session.selection = child.id },
                          move: { offset in move(index, by: offset) },
                          remove: { remove(child) })
                 Divider().opacity(0.5)

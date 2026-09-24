@@ -71,6 +71,11 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
         }
     }
 
+    /// Room kept for a multi-line title, so the key doesn't resize as its text changes.
+    var minimumTitleWidth: CGFloat = 0 {
+        didSet { (button as? CustomHeightButton)?.minimumTitleWidth = minimumTitleWidth }
+    }
+
     var backgroundColor: NSColor? {
         didSet {
             reinstallButton()
@@ -111,6 +116,28 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
         didSet {
             button?.imagePosition = attributedTitle.length > 0 ? .imageLeading : .imageOnly
             button?.attributedTitle = displayedTitle
+            if isAwaitingFirstTitle, attributedTitle.length > 0 { reveal() }
+        }
+    }
+
+    /// True while hidden by `hideUntilFirstTitle`.
+    private(set) var isAwaitingFirstTitle = false
+
+    /// For items whose title comes from a script or a reading: stay invisible
+    /// until the first title arrives, then fade in, instead of showing a
+    /// placeholder. Fades in after two seconds regardless.
+    func hideUntilFirstTitle() {
+        isAwaitingFirstTitle = true
+        button.alphaValue = 0
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.reveal() }
+    }
+
+    private func reveal() {
+        guard isAwaitingFirstTitle else { return }
+        isAwaitingFirstTitle = false
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.25
+            button.animator().alphaValue = 1
         }
     }
 
@@ -202,9 +229,28 @@ class CustomHeightButton: NSButton {
         didSet { invalidateIntrinsicContentSize() }
     }
 
+    /// Side margin for multi-line titles; small text needs less room than a label.
+    static let multilineInset: CGFloat = 4
+
+    /// See CustomButtonTouchBarItem.minimumTitleWidth.
+    var minimumTitleWidth: CGFloat = 0 {
+        didSet { invalidateIntrinsicContentSize() }
+    }
+
     override var intrinsicContentSize: NSSize {
         var size = super.intrinsicContentSize
         size.height = 30
+        let imageWidth = image.map { $0.size.width + 4 } ?? 0
+        // NSButton measures a multi-line title as one long line; use the widest line.
+        if attributedTitle.string.contains("\n") {
+            let textWidth = ceil(attributedTitle.boundingRect(
+                with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin]).width)
+            size.width = max(textWidth, minimumTitleWidth) + imageWidth + 2 * CustomHeightButton.multilineInset
+        } else if minimumTitleWidth > 0 {
+            // Holds the space before the first title arrives, too.
+            size.width = max(size.width, minimumTitleWidth + imageWidth + 2 * CustomHeightButton.multilineInset)
+        }
         size.width += horizontalPadding * 2
         return size
     }
@@ -231,6 +277,24 @@ class CustomButtonCell: NSButtonCell {
     
     override func drawingRect(forBounds rect: NSRect) -> NSRect {
         return rect // need that so content may better fit in button with very limited width
+    }
+
+    /// NSButtonCell lays a title out as one line, so a second line would hang off
+    /// the bottom of the key. Draw multi-line titles as a block centered in the key.
+    override func drawTitle(_ title: NSAttributedString, withFrame frame: NSRect, in controlView: NSView) -> NSRect {
+        guard title.string.contains("\n") else {
+            return super.drawTitle(title, withFrame: frame, in: controlView)
+        }
+        let size = title.boundingRect(with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude),
+                                      options: [.usesLineFragmentOrigin]).size
+        let bounds = controlView.bounds
+        // With an icon, stay in the space beside it; otherwise use the whole key.
+        let midX = image == nil ? bounds.midX : frame.midX
+        let rect = NSRect(x: midX - ceil(size.width) / 2,
+                          y: bounds.midY - ceil(size.height) / 2,
+                          width: ceil(size.width), height: ceil(size.height))
+        title.draw(with: rect, options: [.usesLineFragmentOrigin])
+        return rect
     }
 
     required init(coder _: NSCoder) {

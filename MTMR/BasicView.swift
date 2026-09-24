@@ -46,6 +46,19 @@ class BasicView: NSCustomTouchBarItem, NSGestureRecognizerDelegate {
         view.addGestureRecognizer(fourfingers)
     }
 
+    /// Replaces the bar's contents in place.
+    func setItems(_ items: [NSTouchBarItem], swipeItems: [SwipeItem]) {
+        self.swipeItems = swipeItems
+        guard let stackView = view as? NSStackView else { return }
+        for view in stackView.arrangedSubviews {
+            stackView.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+        for view in items.compactMap({ $0.view }) {
+            stackView.addArrangedSubview(view)
+        }
+    }
+
     required init?(coder _: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }

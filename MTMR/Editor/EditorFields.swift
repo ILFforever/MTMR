@@ -13,6 +13,96 @@ import SwiftUI
 // here declare `State<Value>` properties directly instead, which SwiftUI treats
 // exactly like `@State` (it's what the wrapper expands to).
 
+/// Shared measurements for the editor window.
+enum EditorStyle {
+    /// Inspector boxes and library tiles.
+    static let boxRadius: CGFloat = 10
+    /// The bar at the top of the window.
+    static let barRadius: CGFloat = 10
+    /// Free-text fields; wider ones are hard to scan against the labels.
+    static let fieldWidth: CGFloat = 260
+}
+
+/// A compact icon switch whose highlight slides to the chosen option.
+struct PaneToggle: View {
+    @Binding var selection: String
+    /// (tag, SF Symbol, tooltip)
+    let options: [(String, String, String)]
+
+    private static let segment = CGSize(width: 28, height: 22)
+
+    private var selectedIndex: Int {
+        options.firstIndex { $0.0 == selection } ?? 0
+    }
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Color.accentColor)
+                .frame(width: PaneToggle.segment.width, height: PaneToggle.segment.height)
+                .offset(x: CGFloat(selectedIndex) * PaneToggle.segment.width)
+            HStack(spacing: 0) {
+                ForEach(options, id: \.0) { tag, symbol, help in
+                    Button(action: { selection = tag }) {
+                        Image(systemName: symbol)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(selection == tag ? .white : .secondary)
+                            .frame(width: PaneToggle.segment.width, height: PaneToggle.segment.height)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(help)
+                }
+            }
+        }
+        .padding(2)
+        .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.08)))
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: selection)
+    }
+}
+
+/// A native search field (magnifying glass, clear button, Esc to clear).
+struct SearchField: NSViewRepresentable {
+    let placeholder: String
+    @Binding var text: String
+
+    func makeNSView(context: Context) -> NSSearchField {
+        let field = NSSearchField()
+        field.delegate = context.coordinator
+        field.sendsSearchStringImmediately = true
+        return field
+    }
+
+    func updateNSView(_ field: NSSearchField, context _: Context) {
+        field.placeholderString = placeholder
+        if field.stringValue != text { field.stringValue = text }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
+
+    final class Coordinator: NSObject, NSSearchFieldDelegate {
+        let text: Binding<String>
+        init(text: Binding<String>) { self.text = text }
+
+        func controlTextDidChange(_ note: Notification) {
+            if let field = note.object as? NSSearchField { text.wrappedValue = field.stringValue }
+        }
+    }
+}
+
+/// The window's sidebar material, as in Finder or System Settings.
+struct SidebarBackground: NSViewRepresentable {
+    func makeNSView(context _: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .followsWindowActiveState
+        return view
+    }
+
+    func updateNSView(_: NSVisualEffectView, context _: Context) {}
+}
+
 /// A collapsible group of rows in a rounded box, like a System Settings section.
 struct InspectorSection<Content: View>: View {
     let title: String
@@ -29,9 +119,9 @@ struct InspectorSection<Content: View>: View {
                         .foregroundColor(.secondary)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                     Image(systemName: symbol)
-                        .foregroundColor(.accentColor)
+                        .foregroundColor(.secondary)
                         .frame(width: 18)
-                    Text(title).font(.headline)
+                    Text(title).font(.system(size: 13, weight: .semibold))
                     Spacer()
                 }
                 .contentShape(Rectangle())
@@ -43,10 +133,14 @@ struct InspectorSection<Content: View>: View {
                 VStack(alignment: .leading, spacing: 0) {
                     content()
                 }
+                // Rows draw a divider below themselves; hide the last one.
+                .padding(.bottom, -1)
+                .clipped()
                 .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(nsColor: .separatorColor), lineWidth: 0.5))
+                .padding(.vertical, 2)
+                .background(RoundedRectangle(cornerRadius: EditorStyle.boxRadius).fill(Color(nsColor: .controlBackgroundColor)))
+                .overlay(RoundedRectangle(cornerRadius: EditorStyle.boxRadius)
+                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5))
             }
         }
     }
@@ -60,18 +154,19 @@ struct FieldRow<Control: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(label)
                     if let help = help {
                         Text(help).font(.caption).foregroundColor(.secondary)
                     }
                 }
-                .frame(width: 190, alignment: .leading)
+                .layoutPriority(1)
+                Spacer(minLength: 12)
                 control()
-                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
-            .padding(.vertical, 7)
+            .frame(minHeight: 36)
+            .padding(.vertical, 3)
             Divider().opacity(0.5)
         }
     }
@@ -87,6 +182,7 @@ struct TextFieldRow: View {
         FieldRow(label: label, help: help) {
             TextField(placeholder, text: $text)
                 .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: EditorStyle.fieldWidth)
         }
     }
 }
@@ -108,7 +204,8 @@ struct NumberFieldRow: View {
         FieldRow(label: label, help: help) {
             TextField(placeholder, text: textState.projectedValue)
                 .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 120)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 90)
                 .onAppear { text = value.map(NumberFieldRow.format) ?? "" }
                 .onChange(of: text) { newText in
                     let trimmed = newText.trimmingCharacters(in: .whitespaces)
@@ -156,7 +253,7 @@ struct ChoiceRow: View {
                 ForEach(options, id: \.self) { Text($0.capitalizedFirst).tag($0) }
             }
             .labelsHidden()
-            .frame(maxWidth: 180)
+            .fixedSize()
         }
     }
 }
@@ -201,28 +298,32 @@ struct ColorControl: View {
         HStack(spacing: 6) {
             TextField("Default", text: $value)
                 .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 110)
-            if value.isEmpty {
-                Button(action: { value = suggested }) {
-                    Circle()
-                        .strokeBorder(Color.secondary, style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
-                        .frame(width: 22, height: 22)
+                .frame(width: 100)
+            Group {
+                if value.isEmpty {
+                    Button(action: { value = suggested }) {
+                        Circle()
+                            .strokeBorder(Color.secondary, style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                            .frame(width: 20, height: 20)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Choose a color")
+                } else {
+                    ColorPicker("", selection: Binding(
+                        get: { Color(nsColor: value.namedOrHexColor ?? .clear) },
+                        set: { value = NSColor($0).hexString }
+                    ), supportsOpacity: false)
+                        .labelsHidden()
                 }
-                .buttonStyle(.plain)
-                .help("Choose a color")
-                .frame(width: 44)
-            } else {
-                ColorPicker("", selection: Binding(
-                    get: { Color(nsColor: value.namedOrHexColor ?? .clear) },
-                    set: { value = NSColor($0).hexString }
-                ), supportsOpacity: false)
-                    .labelsHidden()
-                Button(action: { value = "" }) {
-                    Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
-                }
-                .buttonStyle(.borderless)
-                .help("Use the default")
             }
+            .frame(width: 44)
+            Button(action: { value = "" }) {
+                Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help("Use the default")
+            .opacity(value.isEmpty ? 0 : 1)
+            .disabled(value.isEmpty)
         }
     }
 }
@@ -241,7 +342,7 @@ struct SymbolRow: View {
                     .foregroundColor(value.isEmpty ? .secondary : .primary)
                 TextField("None", text: $value)
                     .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 170)
+                    .frame(width: 150)
                 Button("Choose…") { showingPicker.wrappedValue.toggle() }
                     .popover(isPresented: showingPicker.projectedValue, arrowEdge: .bottom) {
                         SymbolPicker(selection: $value, isPresented: showingPicker.projectedValue)

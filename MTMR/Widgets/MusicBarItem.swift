@@ -43,7 +43,8 @@ class MusicBarItem: CustomButtonTouchBarItem, TearDownable {
         self.interval = interval
         self.disableMarquee = disableMarquee
 
-        super.init(identifier: identifier, title: "⏳")
+        super.init(identifier: identifier, title: "")
+        hideUntilFirstTitle()
         isBordered = false
         
         actions = [
