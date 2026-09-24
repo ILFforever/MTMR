@@ -357,7 +357,7 @@ enum FieldKind {
     case text(placeholder: String)
     case multiline
     case number(placeholder: String)
-    case toggle
+    case toggle(default: Bool)
     case choice([String])
 }
 
@@ -426,7 +426,7 @@ enum ItemCatalog {
         simple("mute", "Mute", "speaker.slash", "Media"),
         ItemTypeInfo(type: "music", name: "Now Playing", symbol: "music.note", category: "Media", defaults: [:],
                      fields: [FieldSpec(path: "refreshInterval", label: "Refresh every (s)", kind: .number(placeholder: "5")),
-                              FieldSpec(path: "disableMarquee", label: "Disable scrolling text", kind: .toggle)]),
+                              FieldSpec(path: "disableMarquee", label: "Disable scrolling text", kind: .toggle(default: false))]),
 
         // Status
         ItemTypeInfo(type: "timeButton", name: "Clock", symbol: "clock", category: "Status", defaults: ["formatTemplate": .string("HH:mm")],
@@ -436,9 +436,16 @@ enum ItemCatalog {
         ItemTypeInfo(type: "cpu", name: "CPU", symbol: "cpu", category: "Status", defaults: ["refreshInterval": .number(3)],
                      fields: [FieldSpec(path: "refreshInterval", label: "Refresh every (s)", kind: .number(placeholder: "5"))]),
         ItemTypeInfo(type: "network", name: "Network Speed", symbol: "arrow.up.arrow.down", category: "Status", defaults: ["flip": .bool(true)],
-                     fields: [FieldSpec(path: "flip", label: "Upload on top", kind: .toggle),
+                     fields: [FieldSpec(path: "flip", label: "Upload on top", kind: .toggle(default: false)),
                               FieldSpec(path: "units", label: "Units", kind: .choice(["dynamic", "B/s", "KB/s", "MB/s", "GB/s"]))]),
-        simple("battery", "Battery", "battery.75", "Status"),
+        ItemTypeInfo(type: "battery", name: "Battery", symbol: "battery.75", category: "Status", defaults: [:],
+                     fields: [FieldSpec(path: "showIcon", label: "Show battery icon", kind: .toggle(default: true)),
+                              FieldSpec(path: "showPercentage", label: "Show percentage", kind: .toggle(default: true)),
+                              FieldSpec(path: "percentInside", label: "Percentage inside the icon", kind: .toggle(default: false)),
+                              FieldSpec(path: "showTime", label: "Show time remaining", kind: .toggle(default: false)),
+                              FieldSpec(path: "animate", label: "Animate while charging", kind: .toggle(default: true)),
+                              FieldSpec(path: "tapToCycle", label: "Tap to cycle % / time / icon", kind: .toggle(default: true)),
+                              FieldSpec(path: "lowThreshold", label: "Low battery warning at (%)", kind: .number(placeholder: "20"))]),
         ItemTypeInfo(type: "weather", name: "Weather", symbol: "cloud.sun", category: "Status", defaults: [:],
                      fields: [FieldSpec(path: "api_key", label: "OpenWeatherMap API key", kind: .text(placeholder: "required")),
                               FieldSpec(path: "units", label: "Units", kind: .choice(["metric", "imperial"])),
@@ -447,13 +454,13 @@ enum ItemCatalog {
         ItemTypeInfo(type: "currency", name: "Currency", symbol: "dollarsign.circle", category: "Status", defaults: ["from": .string("BTC"), "to": .string("USD")],
                      fields: [FieldSpec(path: "from", label: "From", kind: .text(placeholder: "BTC")),
                               FieldSpec(path: "to", label: "To", kind: .text(placeholder: "USD")),
-                              FieldSpec(path: "full", label: "Show full price", kind: .toggle),
+                              FieldSpec(path: "full", label: "Show full price", kind: .toggle(default: false)),
                               FieldSpec(path: "refreshInterval", label: "Refresh every (s)", kind: .number(placeholder: "600"))]),
         ItemTypeInfo(type: "upnext", name: "Up Next (Calendar)", symbol: "calendar", category: "Status", defaults: [:],
                      fields: [FieldSpec(path: "from", label: "From (hours from now)", kind: .number(placeholder: "0")),
                               FieldSpec(path: "to", label: "To (hours from now)", kind: .number(placeholder: "12")),
                               FieldSpec(path: "maxToShow", label: "Max events", kind: .number(placeholder: "3")),
-                              FieldSpec(path: "autoResize", label: "Auto-resize", kind: .toggle)]),
+                              FieldSpec(path: "autoResize", label: "Auto-resize", kind: .toggle(default: false))]),
         ItemTypeInfo(type: "pomodoro", name: "Pomodoro", symbol: "timer", category: "Status", defaults: [:],
                      fields: [FieldSpec(path: "workTime", label: "Work (s)", kind: .number(placeholder: "1500")),
                               FieldSpec(path: "restTime", label: "Rest (s)", kind: .number(placeholder: "600"))]),
@@ -466,7 +473,7 @@ enum ItemCatalog {
         simple("sleep", "Sleep", "powersleep", "System"),
         simple("displaySleep", "Display Sleep", "display", "System"),
         ItemTypeInfo(type: "dock", name: "Dock", symbol: "dock.rectangle", category: "System", defaults: [:],
-                     fields: [FieldSpec(path: "autoResize", label: "Auto-resize", kind: .toggle),
+                     fields: [FieldSpec(path: "autoResize", label: "Auto-resize", kind: .toggle(default: false)),
                               FieldSpec(path: "filter", label: "Only apps matching (regex)", kind: .text(placeholder: "Safari|Mail"))]),
 
         // Sliders
@@ -477,7 +484,7 @@ enum ItemCatalog {
         // Containers
         ItemTypeInfo(type: "popover", name: "Popover", symbol: "rectangle.expand.vertical", category: "Containers",
                      defaults: ["symbol": .string("speaker.wave.2.fill"), "pressAndHold": .bool(true)],
-                     fields: [FieldSpec(path: "pressAndHold", label: "Press and hold to slide", kind: .toggle),
+                     fields: [FieldSpec(path: "pressAndHold", label: "Press and hold to slide", kind: .toggle(default: false)),
                               FieldSpec(path: "autoClose", label: "Auto-close after (s)", kind: .number(placeholder: "never"))]),
         ItemTypeInfo(type: "group", name: "Group", symbol: "folder", category: "Containers",
                      defaults: ["symbol": .string("folder.fill")], fields: []),

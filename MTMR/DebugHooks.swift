@@ -11,7 +11,8 @@
 //
 //  Commands: "popover" (expand the first popover), "group" (open the first group),
 //  "dismiss" (return to the main bar), "settings" (open the editor window),
-//  "select N" (select the Nth top-level item in the editor).
+//  "select N" (select the Nth top-level item in the editor), "tap NAME" (tap the
+//  first item whose identifier contains NAME, e.g. "tap battery").
 //
 
 import Cocoa
@@ -43,6 +44,12 @@ enum DebugHooks {
             if let index = Int(select.dropFirst(7)), editor.document.items.indices.contains(index) {
                 editor.session.selection = editor.document.items[index].id
             }
+        case let tap where tap.hasPrefix("tap "):
+            // "tap battery" taps the first item whose identifier contains "battery".
+            let name = tap.dropFirst(4).lowercased()
+            let match = TouchBarController.shared.items
+                .first { $0.key.rawValue.lowercased().contains(name) }?.value as? CustomButtonTouchBarItem
+            match?.callActions(for: .singleTap)
         case "dismiss":
             for case let item as PopoverBarItem in items {
                 item.collapse()

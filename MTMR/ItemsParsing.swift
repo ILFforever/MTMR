@@ -262,7 +262,7 @@ enum ItemType: Decodable {
     case appleScriptTitledButton(source: SourceProtocol, refreshInterval: Double, alternativeImages: [String: SourceProtocol])
     case shellScriptTitledButton(source: SourceProtocol, refreshInterval: Double)
     case timeButton(formatTemplate: String, timeZone: String?, locale: String?)
-    case battery
+    case battery(options: BatteryOptions)
     case cpu(refreshInterval: Double)
     case dock(autoResize: Bool, filter: String?)
     case volume
@@ -316,6 +316,7 @@ enum ItemType: Decodable {
         case maxToShow
         case pressAndHold
         case autoClose
+        case showIcon, showPercentage, percentInside, showTime, animate, lowThreshold, tapToCycle
     }
 
     enum ItemTypeRaw: String, Decodable {
@@ -370,7 +371,15 @@ enum ItemType: Decodable {
             self = .timeButton(formatTemplate: template, timeZone: timeZone, locale: locale)
 
         case .battery:
-            self = .battery
+            var options = BatteryOptions()
+            options.showIcon = try container.decodeIfPresent(Bool.self, forKey: .showIcon) ?? options.showIcon
+            options.showPercentage = try container.decodeIfPresent(Bool.self, forKey: .showPercentage) ?? options.showPercentage
+            options.percentInside = try container.decodeIfPresent(Bool.self, forKey: .percentInside) ?? options.percentInside
+            options.showTime = try container.decodeIfPresent(Bool.self, forKey: .showTime) ?? options.showTime
+            options.animate = try container.decodeIfPresent(Bool.self, forKey: .animate) ?? options.animate
+            options.lowThreshold = try container.decodeIfPresent(Int.self, forKey: .lowThreshold) ?? options.lowThreshold
+            options.tapToCycle = try container.decodeIfPresent(Bool.self, forKey: .tapToCycle) ?? options.tapToCycle
+            self = .battery(options: options)
             
         case .cpu:
             let refreshInterval = try container.decodeIfPresent(Double.self, forKey: .refreshInterval) ?? 5.0

@@ -5,19 +5,56 @@
 //  Created by Anton Palgunov on 18/04/2018.
 //  Copyright © 2018 Anton Palgunov. All rights reserved.
 //
+//  Stripe: a drawn battery icon whose fill tracks the charge (green while
+//  charging, yellow in Low Power Mode, red when low, with a sweep animation
+//  while charging), plus optional percentage and time remaining. Tapping can
+//  cycle what's shown; holding opens Battery settings.
+//
+//    { "type": "battery", "showIcon": true, "showPercentage": true,
+//      "percentInside": false, "showTime": false, "animate": true,
+//      "lowThreshold": 20, "tapToCycle": true }
+//
 
-import Foundation
+import Cocoa
 import IOKit.ps
 
-class BatteryBarItem: CustomButtonTouchBarItem {
-    private let batteryInfo = BatteryInfo()
+struct BatteryOptions {
+    var showIcon = true
+    var showPercentage = true
+    /// Draw the percentage inside the icon, as on iPhone.
+    var percentInside = false
+    var showTime = false
+    var animate = true
+    var lowThreshold = 20
+    var tapToCycle = true
+}
 
-    init(identifier: NSTouchBarItem.Identifier) {
+class BatteryBarItem: CustomButtonTouchBarItem, TearDownable {
+    private let batteryInfo = BatteryInfo()
+    private let options: BatteryOptions
+
+    /// What a tap has switched to. 0 shows what the options say.
+    private var cycleStep = 0
+    private var animationTimer: Timer?
+    private var sweepPhase: CGFloat = 0
+
+    init(identifier: NSTouchBarItem.Identifier, options: BatteryOptions) {
+        self.options = options
         super.init(identifier: identifier, title: " ")
+
+        if options.tapToCycle {
+            actions.append(ItemAction(trigger: .singleTap) { [weak self] in self?.cycle() })
+        }
+        actions.append(ItemAction(trigger: .longTap) {
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Battery-Settings.extension")!)
+        })
 
         batteryInfo.start { [weak self] in
             self?.refresh()
         }
+        // Low Power Mode changes the fill color but doesn't post a battery notification.
+        NotificationCenter.default.addObserver(self, selector: #selector(refreshFromNotification),
+                                               name: .NSProcessInfoPowerStateDidChange, object: nil)
         refresh()
     }
 
@@ -25,12 +62,176 @@ class BatteryBarItem: CustomButtonTouchBarItem {
         fatalError("init(coder:) has not been implemented")
     }
 
-    func refresh() {
-        attributedTitle = batteryInfo.formattedInfo()
+    func tearDown() {
+        batteryInfo.stop()
+        animationTimer?.invalidate()
+        animationTimer = nil
+        NotificationCenter.default.removeObserver(self)
     }
 
-    deinit {
-        batteryInfo.stop()
+    // MARK: What's shown
+
+    private struct Display {
+        var icon: Bool
+        var percentage: Bool
+        var time: Bool
+    }
+
+    /// Tap-to-cycle steps: as configured → time remaining → icon only.
+    private var display: Display {
+        let configured = Display(icon: options.showIcon, percentage: options.showPercentage, time: options.showTime)
+        switch cycleStep {
+        case 1: return Display(icon: options.showIcon, percentage: false, time: true)
+        case 2: return Display(icon: true, percentage: false, time: false)
+        default: return configured
+        }
+    }
+
+    private func cycle() {
+        cycleStep = (cycleStep + 1) % 3
+        refresh()
+    }
+
+    @objc private func refreshFromNotification() {
+        DispatchQueue.main.async { self.refresh() }
+    }
+
+    func refresh() {
+        batteryInfo.getPSInfo()
+        let display = self.display
+        let showPercentInside = display.icon && display.percentage && options.percentInside
+
+        image = display.icon ? batteryIcon(percentInside: showPercentInside) : nil
+
+        var parts: [String] = []
+        if display.percentage && !showPercentInside { parts.append("\(batteryInfo.current)%") }
+        if display.time { parts.append(batteryInfo.timeDescription) }
+        let text = parts.joined(separator: "  ")
+        let title = NSMutableAttributedString(attributedString: text.defaultTouchbarAttributedString)
+        if isLow {
+            title.addAttribute(.foregroundColor, value: NSColor.systemRed, range: NSRange(location: 0, length: title.length))
+        }
+        attributedTitle = title
+
+        updateAnimation()
+    }
+
+    // MARK: Icon
+
+    private var isLow: Bool {
+        return !batteryInfo.onACPower && batteryInfo.current <= options.lowThreshold
+    }
+
+    private var fillColor: NSColor {
+        if batteryInfo.isCharging || (batteryInfo.onACPower && batteryInfo.current >= 100) { return .systemGreen }
+        if ProcessInfo.processInfo.isLowPowerModeEnabled { return .systemYellow }
+        if isLow { return .systemRed }
+        return .white
+    }
+
+    private func batteryIcon(percentInside: Bool) -> NSImage {
+        // Inside-percentage icons are larger, and wider still with a bolt beside the number.
+        let bodySize = percentInside ? NSSize(width: batteryInfo.onACPower ? 40 : 34, height: 16) : NSSize(width: 27, height: 13)
+        let size = NSSize(width: bodySize.width + 3, height: bodySize.height)
+        let level = CGFloat(max(0, min(100, batteryInfo.current))) / 100
+        let fill = fillColor
+        let charging = batteryInfo.isCharging
+        let onAC = batteryInfo.onACPower
+        let sweep = animating ? sweepPhase : nil
+        let percent = batteryInfo.current
+
+        let image = NSImage(size: size, flipped: false) { _ in
+            let body = NSRect(origin: .zero, size: bodySize).insetBy(dx: 0.5, dy: 0.5)
+            let radius = bodySize.height * 0.3
+
+            // Outline and the terminal nub.
+            NSColor(white: 1, alpha: 0.45).setStroke()
+            let outline = NSBezierPath(roundedRect: body, xRadius: radius, yRadius: radius)
+            outline.lineWidth = 1
+            outline.stroke()
+            let nub = NSRect(x: bodySize.width + 0.5, y: bodySize.height * 0.32, width: 2, height: bodySize.height * 0.36)
+            NSColor(white: 1, alpha: 0.45).setFill()
+            NSBezierPath(roundedRect: nub, xRadius: 1, yRadius: 1).fill()
+
+            // Fill proportional to the charge.
+            let inner = body.insetBy(dx: 2, dy: 2)
+            let innerRadius = max(radius - 2, 1)
+            var filled = inner
+            filled.size.width = max(inner.width * level, level > 0 ? innerRadius * 2 : 0)
+            fill.setFill()
+            NSBezierPath(roundedRect: filled, xRadius: innerRadius, yRadius: innerRadius).fill()
+
+            // Charging sweep: a soft light band moving across the fill.
+            if let phase = sweep {
+                NSGraphicsContext.saveGraphicsState()
+                NSBezierPath(roundedRect: filled, xRadius: innerRadius, yRadius: innerRadius).addClip()
+                let bandWidth: CGFloat = 8
+                let x = filled.minX - bandWidth + (filled.width + bandWidth * 2) * phase
+                let gradient = NSGradient(colors: [NSColor(white: 1, alpha: 0), NSColor(white: 1, alpha: 0.65), NSColor(white: 1, alpha: 0)])
+                gradient?.draw(in: NSRect(x: x, y: filled.minY, width: bandWidth, height: filled.height), angle: 0)
+                NSGraphicsContext.restoreGraphicsState()
+            }
+
+            if percentInside {
+                // Dark text on the fill reads well on every fill color.
+                // White with a soft shadow reads over the fill and the empty part alike.
+                let shadow = NSShadow()
+                shadow.shadowColor = NSColor(white: 0, alpha: 0.7)
+                shadow.shadowBlurRadius = 1.5
+                let text = NSAttributedString(string: "\(percent)", attributes: [
+                    .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .bold),
+                    .foregroundColor: NSColor.white,
+                    .shadow: shadow,
+                ])
+                let textSize = text.size()
+                let x = body.midX - textSize.width / 2 - (onAC ? 5 : 0)
+                text.draw(at: NSPoint(x: x, y: body.midY - textSize.height / 2))
+            }
+
+            if onAC {
+                // A bolt while plugged in, outlined so it shows over any fill.
+                let boltSize = bodySize.height * (percentInside ? 0.6 : 0.95)
+                let config = NSImage.SymbolConfiguration(pointSize: boltSize, weight: .black)
+                    .applying(NSImage.SymbolConfiguration(paletteColors: [charging ? .white : NSColor(white: 1, alpha: 0.9)]))
+                if let bolt = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "Charging")?
+                    .withSymbolConfiguration(config) {
+                    let b = bolt.size
+                    let x = percentInside ? body.maxX - b.width - 4 : body.midX - b.width / 2
+                    let rect = NSRect(x: x, y: body.midY - b.height / 2, width: b.width, height: b.height)
+                    NSGraphicsContext.saveGraphicsState()
+                    let shadow = NSShadow()
+                    shadow.shadowColor = NSColor(white: 0, alpha: 0.9)
+                    shadow.shadowBlurRadius = 1.5
+                    shadow.set()
+                    bolt.draw(in: rect)
+                    NSGraphicsContext.restoreGraphicsState()
+                }
+            }
+            return true
+        }
+        image.isTemplate = false
+        return image
+    }
+
+    // MARK: Animation
+
+    private var animating: Bool {
+        return options.animate && display.icon && batteryInfo.isCharging && batteryInfo.current < 100
+    }
+
+    private func updateAnimation() {
+        if animating, animationTimer == nil {
+            // ~2s per sweep at 20fps; only runs while charging.
+            animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20, repeats: true) { [weak self] _ in
+                guard let self = self else { return }
+                self.sweepPhase += 1.0 / 40
+                if self.sweepPhase > 1.3 { self.sweepPhase = -0.3 } // a pause between sweeps
+                self.image = self.batteryIcon(percentInside: self.display.percentage && self.options.percentInside)
+            }
+        } else if !animating, let timer = animationTimer {
+            timer.invalidate()
+            animationTimer = nil
+        }
     }
 }
 
@@ -41,14 +242,15 @@ class BatteryInfo: NSObject {
     var isCharged: Bool = false
     var isCharging: Bool = false
     var ACPower: String = ""
-    var timeRemaining: String = ""
     var notifyBlock: () -> Void = {}
     var loop: CFRunLoopSource?
 
+    var onACPower: Bool { ACPower == kIOPSACPowerValue }
+
     func start(notifyBlock: @escaping () -> Void) {
         self.notifyBlock = notifyBlock
-        let opaque = Unmanaged.passRetained(self).toOpaque()
-        let context = UnsafeMutableRawPointer(opaque)
+        // Unretained: the item owns this object and calls stop() before releasing it.
+        let context = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
         loop = IOPSNotificationCreateRunLoopSource({ context in
             guard let ctx = context else {
                 return
@@ -102,39 +304,12 @@ class BatteryInfo: NSObject {
         }
     }
 
-    func getFormattedTime(time: Int) -> String {
-        if time > 0 {
-            let timeFormatted = NSString(format: " %d:%02d", time / 60, time % 60) as String
-            return timeFormatted
+    /// e.g. "2:05 left", "0:40 to full", "Charged", or "—" while macOS is still estimating.
+    var timeDescription: String {
+        if onACPower {
+            if isCharged || current >= 100 { return "Charged" }
+            return timeToFull > 0 ? String(format: "%d:%02d to full", timeToFull / 60, timeToFull % 60) : "—"
         }
-
-        return ""
-    }
-
-    public func formattedInfo() -> NSAttributedString {
-        var title = ""
-        getPSInfo()
-
-        if ACPower == "AC Power" {
-            if current < 100 {
-                title += "⚡️"
-            }
-            timeRemaining = getFormattedTime(time: timeToFull)
-        } else {
-            timeRemaining = getFormattedTime(time: timeToEmpty)
-        }
-
-        title += String(current) + "%"
-
-        var color = NSColor.white
-        if current <= 10 && ACPower != "AC Power" {
-            color = NSColor.red
-        }
-
-        let newTitle = NSMutableAttributedString(string: title as String, attributes: [.foregroundColor: color, .font: NSFont.systemFont(ofSize: 15), .baselineOffset: 1])
-        let newTitleSecond = NSMutableAttributedString(string: timeRemaining as String, attributes: [NSAttributedString.Key.foregroundColor: color, NSAttributedString.Key.font: NSFont.systemFont(ofSize: 8, weight: .regular), NSAttributedString.Key.baselineOffset: 7])
-        newTitle.append(newTitleSecond)
-        newTitle.setAlignment(.center, range: NSRange(location: 0, length: title.count))
-        return newTitle
+        return timeToEmpty > 0 ? String(format: "%d:%02d left", timeToEmpty / 60, timeToEmpty % 60) : "—"
     }
 }

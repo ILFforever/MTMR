@@ -385,8 +385,8 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             barItem = ShellScriptTouchBarItem(identifier: identifier, source: source, interval: interval)
         case let .timeButton(formatTemplate: template, timeZone: timeZone, locale: locale):
             barItem = TimeTouchBarItem(identifier: identifier, formatTemplate: template, timeZone: timeZone, locale: locale)
-        case .battery:
-            barItem = BatteryBarItem(identifier: identifier)
+        case let .battery(options):
+            barItem = BatteryBarItem(identifier: identifier, options: options)
         case let .cpu(refreshInterval: refreshInterval):
             barItem = CPUBarItem(identifier: identifier, refreshInterval: refreshInterval)
         case let .dock(autoResize: autoResize, filter: regexString):

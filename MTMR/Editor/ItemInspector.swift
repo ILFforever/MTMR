@@ -141,8 +141,8 @@ struct ItemInspector: View {
             MultilineRow(label: field.label, text: string(field.path))
         case let .number(placeholder):
             NumberFieldRow(label: field.label, placeholder: placeholder, value: number(field.path))
-        case .toggle:
-            ToggleRow(label: field.label, defaultValue: false, value: bool(field.path))
+        case let .toggle(defaultValue):
+            ToggleRow(label: field.label, defaultValue: defaultValue, value: bool(field.path))
         case let .choice(options):
             ChoiceRow(label: field.label, options: options, value: string(field.path))
         }
