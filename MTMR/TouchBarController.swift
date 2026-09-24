@@ -439,7 +439,7 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         case let .group(items: items):
             barItem = GroupBarItem(identifier: identifier, items: items)
         case let .popover(items: items, pressAndHold: pressAndHold, autoClose: autoClose):
-            barItem = PopoverBarItem(identifier: identifier, items: items, pressAndHold: pressAndHold, autoClose: autoClose)
+            barItem = PopoverBarItem(identifier: identifier, items: items, pressAndHold: pressAndHold, autoClose: autoClose, align: item.align)
         case .nightShift:
             barItem = NightShiftBarItem(identifier: identifier)
         case .dnd:

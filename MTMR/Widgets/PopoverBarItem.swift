@@ -14,6 +14,10 @@
 //      "autoClose": 4          // seconds of inactivity before collapsing (optional)
 //    }
 //
+//  The expanded controls open on the same side as the button (a right-aligned
+//  button expands at the right, with ✕ at the far right where the finger already
+//  is), and tapping the empty rest of the bar closes them.
+//
 //  Apple's NSPopoverTouchBarItem can't open from a system-modal bar like ours, and
 //  only one system-modal bar shows at a time, so the sub-bar takes over the main bar.
 //  The button is "expanded" while the main bar shows this item's children.
@@ -29,14 +33,17 @@ protocol SlidableItem: AnyObject {
 
 class PopoverBarItem: CustomButtonTouchBarItem, NSTouchBarDelegate {
     private let autoClose: TimeInterval?
+    private let align: Align
+    private let expandedIdentifier = NSTouchBarItem.Identifier("com.ilfforever.stripe.popover.expanded." + UUID().uuidString)
     private var childIdentifiers: [NSTouchBarItem.Identifier] = []
     private var childDefinitions: [NSTouchBarItem.Identifier: BarItemDefinition] = [:]
     private var childItems: [NSTouchBarItem.Identifier: NSTouchBarItem] = [:]
     private let closeIdentifier = NSTouchBarItem.Identifier("com.ilfforever.stripe.popover.close." + UUID().uuidString)
     private var autoCloseTimer: Timer?
 
-    init(identifier: NSTouchBarItem.Identifier, items: [BarItemDefinition], pressAndHold: Bool, autoClose: TimeInterval?) {
+    init(identifier: NSTouchBarItem.Identifier, items: [BarItemDefinition], pressAndHold: Bool, autoClose: TimeInterval?, align: Align) {
         self.autoClose = autoClose
+        self.align = align
         super.init(identifier: identifier, title: "")
 
         for definition in items {
@@ -67,7 +74,7 @@ class PopoverBarItem: CustomButtonTouchBarItem, NSTouchBarDelegate {
     @objc func expand() {
         guard !isExpanded else { return }
         isExpanded = true
-        TouchBarController.shared.showSubBar(identifiers: [closeIdentifier] + childIdentifiers, delegate: self)
+        TouchBarController.shared.showSubBar(identifiers: [expandedIdentifier], delegate: self)
         scheduleAutoClose()
     }
 
@@ -76,6 +83,33 @@ class PopoverBarItem: CustomButtonTouchBarItem, NSTouchBarDelegate {
         guard isExpanded else { return }
         isExpanded = false
         TouchBarController.shared.restoreMainBar()
+    }
+
+    /// The whole expanded bar as one item (so it can span the full width, like
+    /// the main bar): controls anchored on the button's side, and the empty
+    /// remainder a tap target that closes it.
+    private func makeExpandedItem() -> NSTouchBarItem {
+        let close = makeItem(closeIdentifier)?.view.map { [$0] } ?? []
+        let children = childIdentifiers.compactMap { makeItem($0)?.view }
+        let dismiss = { [weak self] in self?.collapse() ?? () }
+        let views: [NSView]
+        switch align {
+        case .right: // ✕ at the far right, where the button was
+            views = [DismissArea(onTap: dismiss)] + children + close
+        case .left:
+            views = close + children + [DismissArea(onTap: dismiss)]
+        case .center:
+            views = [DismissArea(onTap: dismiss)] + close + children + [DismissArea(onTap: dismiss)]
+        }
+        let stack = NSStackView(views: views)
+        stack.orientation = .horizontal
+        stack.spacing = 8
+        if align == .center, let first = views.first, let last = views.last {
+            first.widthAnchor.constraint(equalTo: last.widthAnchor).isActive = true
+        }
+        let item = NSCustomTouchBarItem(identifier: expandedIdentifier)
+        item.view = stack
+        return item
     }
 
     private func scheduleAutoClose() {
@@ -121,13 +155,21 @@ class PopoverBarItem: CustomButtonTouchBarItem, NSTouchBarDelegate {
     // MARK: NSTouchBarDelegate
 
     func touchBar(_: NSTouchBar, makeItemForIdentifier identifier: NSTouchBarItem.Identifier) -> NSTouchBarItem? {
+        return identifier == expandedIdentifier ? makeExpandedItem() : makeItem(identifier)
+    }
+
+    private var closeItem: NSTouchBarItem?
+
+    private func makeItem(_ identifier: NSTouchBarItem.Identifier) -> NSTouchBarItem? {
         if identifier == closeIdentifier {
+            if let close = closeItem { return close }
             // A gray rounded key, like the close button on Apple's expanded controls.
             let close = CustomButtonTouchBarItem(identifier: identifier, title: "")
             close.style = ItemStyle(fontWeight: .semibold, cornerRadius: 8, symbol: "xmark")
             close.backgroundColor = NSColor(white: 1, alpha: 0.2)
             close.setWidth(value: 64)
             close.actions = [ItemAction(trigger: .singleTap) { [weak self] in self?.collapse() }]
+            closeItem = close
             return close
         }
         return makeChild(identifier)
@@ -192,5 +234,30 @@ class HoldSlideGestureRecognizer: NSGestureRecognizer {
         super.reset()
         holdTimer?.invalidate()
         translation = 0
+    }
+}
+
+/// Fills the unused part of an expanded bar; tapping it closes the popover.
+/// It has no intrinsic width, so the stack stretches it over the leftover space.
+class DismissArea: NSView {
+    private let onTap: () -> Void
+
+    init(onTap: @escaping () -> Void) {
+        self.onTap = onTap
+        super.init(frame: .zero)
+        setContentHuggingPriority(.init(1), for: .horizontal)
+        setContentCompressionResistancePriority(.init(1), for: .horizontal)
+        heightAnchor.constraint(equalToConstant: 30).isActive = true
+        let tap = NSClickGestureRecognizer(target: self, action: #selector(tapped))
+        tap.allowedTouchTypes = .direct
+        addGestureRecognizer(tap)
+    }
+
+    required init?(coder _: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    @objc private func tapped() {
+        onTap()
     }
 }
