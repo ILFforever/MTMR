@@ -14,6 +14,15 @@ make install    # build, copy to /Applications, relaunch (use this day to day)
 make universal  # arm64 + x86_64
 ```
 
+Builds are incremental and parallel: swiftc recompiles only the files that
+changed (and what depends on them), across all cores (`JOBS=` to override).
+A clean build takes about 12s; a rebuild after an edit, about 2s. Per-file
+objects live in `build/obj/<arch>/swift/`; `make clean` starts over.
+
+`make universal` needs x86_64 Swift support libraries (e.g.
+`libswiftCompatibility56.a`), which some Command Line Tools installs only ship
+for Apple silicon; the link then fails with "fat file missing arch 'x86_64'".
+
 `MTMR.xcodeproj` is out of date (it doesn't list files added in the fork and still
 references Sparkle). The Makefile is the supported build.
 

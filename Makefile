@@ -15,6 +15,8 @@ ARCHS       ?= $(shell uname -m)
 # rebuilds; otherwise ad-hoc, which macOS treats as a new app every build.
 SIGN_ID     ?= $(shell security find-certificate -c "Stripe Local Signing" >/dev/null 2>&1 && echo "Stripe Local Signing" || echo "-")
 
+JOBS        ?= $(shell sysctl -n hw.ncpu)
+
 BUILD       := build
 APP         := $(BUILD)/$(APP_NAME).app
 CONTENTS    := $(APP)/Contents
@@ -35,27 +37,33 @@ FRAMEWORKS  := -framework DFRFoundation -framework MultitouchSupport \
                -framework CoreBrightness -framework CoreDisplay \
                -framework Cocoa -framework SwiftUI -framework Carbon -framework IOKit -framework ServiceManagement
 
-.PHONY: all universal run install clean
+.PHONY: all universal run install clean FORCE
 all: $(APP)
 
 universal:
 	$(MAKE) ARCHS="arm64 x86_64"
 
-# One executable per arch, then lipo them together.
-$(BUILD)/$(APP_NAME): $(SWIFT_SRCS) $(C_SRCS) $(wildcard $(SRC)/CBridge/*.h) Makefile
+# One executable per arch, then lipo them together. Swift builds are incremental
+# (only changed files and what depends on them are recompiled) and parallel.
+$(BUILD)/$(APP_NAME): $(SWIFT_SRCS) $(C_SRCS) $(wildcard $(SRC)/CBridge/*.h) Makefile $(BUILD)/archs
 	@mkdir -p $(OBJ)
 	@for arch in $(ARCHS); do \
 	  echo "==> compiling $$arch"; \
 	  target=$$arch-apple-macos$(MIN_MACOS); \
 	  mkdir -p $(OBJ)/$$arch; \
+	  mkdir -p $(OBJ)/$$arch/swift; \
 	  for f in $(C_SRCS); do \
-	    clang -c -target $$target -isysroot $(SDK) -fobjc-arc -fmodules -O2 -w \
-	      -I $(SRC)/CBridge $$f -o $(OBJ)/$$arch/$$(basename $$f).o || exit 1; \
+	    o=$(OBJ)/$$arch/$$(basename $$f).o; \
+	    [ "$$o" -nt "$$f" ] || clang -c -target $$target -isysroot $(SDK) -fobjc-arc -fmodules -O2 -w \
+	      -I $(SRC)/CBridge $$f -o $$o || exit 1; \
 	  done; \
-	  swiftc -target $$target -sdk $(SDK) -O -swift-version 5 \
+	  srcs="$(abspath $(SWIFT_SRCS))"; \
+	  build-support/output-file-map.sh $(abspath $(OBJ))/$$arch/swift $$srcs > $(OBJ)/$$arch/swift/map.json; \
+	  swiftc -target $$target -sdk $(SDK) -O -swift-version 5 -incremental -j$(JOBS) \
+	    -output-file-map $(OBJ)/$$arch/swift/map.json \
 	    -module-name $(APP_NAME) -import-objc-header $(BRIDGE_HDR) -I $(SRC)/CBridge \
 	    $(FW_FLAGS) $(FRAMEWORKS) \
-	    $(SWIFT_SRCS) $(OBJ)/$$arch/*.o -o $(OBJ)/$$arch/$(APP_NAME) || exit 1; \
+	    $$srcs $(OBJ)/$$arch/*.o -o $(OBJ)/$$arch/$(APP_NAME) || exit 1; \
 	done
 	lipo -create $(foreach a,$(ARCHS),$(OBJ)/$(a)/$(APP_NAME)) -output $@
 
