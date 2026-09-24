@@ -180,18 +180,16 @@ class SupportedTypesHolder {
             )
         },
 
-        "play": { _ in
-            let imageParameter = GeneralParameter.image(source: NSImage(named: NSImage.touchBarPlayPauseTemplateName)!)
-            return (
-                item: .staticButton(title: ""),
-                actions: [
-                    Action(trigger: .singleTap, value: .hidKey(keycode: NX_KEYTYPE_PLAY))
-                ],
-                legacyAction: .none,
-                legacyLongAction: .none,
-                parameters: [.image: imageParameter]
-            )
-        },
+        // Draws its own icon, half of it lit depending on what's playing (PlayPauseBarItem).
+        "play": { decoder in (
+            item: .playPause(litWhilePlaying: try PlayPauseOptions(from: decoder).litWhilePlaying),
+            actions: [
+                Action(trigger: .singleTap, value: .hidKey(keycode: NX_KEYTYPE_PLAY))
+            ],
+            legacyAction: .none,
+            legacyLongAction: .none,
+            parameters: [:]
+        ) },
 
         "next": { _ in
             let imageParameter = GeneralParameter.image(source: NSImage(named: NSImage.touchBarFastForwardTemplateName)!)
@@ -267,6 +265,7 @@ enum ItemType: Decodable {
     case dock(autoResize: Bool, filter: String?)
     case volume
     case mute
+    case playPause(litWhilePlaying: PlayPauseIcon.Half)
     case brightness(refreshInterval: Double)
     case weather(interval: Double, units: String, api_key: String, icon_type: String)
     case yandexWeather(interval: Double)
@@ -483,6 +482,20 @@ enum ItemType: Decodable {
             let interval = try container.decodeIfPresent(Double.self, forKey: .refreshInterval) ?? 60.0
             self = .upnext(from: from, to: to, maxToShow: maxToShow, autoResize: autoResize)
         }
+    }
+}
+
+/// "litWhilePlaying": "pause" (the default: the key shows what a tap will do)
+/// or "play" (it shows what's happening).
+private struct PlayPauseOptions: Decodable {
+    let litWhilePlaying: PlayPauseIcon.Half
+
+    private enum CodingKeys: String, CodingKey { case litWhilePlaying }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let value = try container.decodeIfPresent(String.self, forKey: .litWhilePlaying)
+        litWhilePlaying = value == "play" ? .play : .pause
     }
 }
 

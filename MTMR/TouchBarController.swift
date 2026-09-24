@@ -39,6 +39,8 @@ extension ItemType {
             return "com.toxblh.mtmr.volume"
         case .mute:
             return "com.ilfforever.stripe.mute."
+        case .playPause:
+            return "com.ilfforever.stripe.playPause."
         case .brightness(refreshInterval: _):
             return "com.toxblh.mtmr.brightness"
         case .weather(interval: _, units: _, api_key: _, icon_type: _):
@@ -488,6 +490,8 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             }
         case .mute:
             barItem = MuteBarItem(identifier: identifier)
+        case let .playPause(litWhilePlaying):
+            barItem = PlayPauseBarItem(identifier: identifier, litWhilePlaying: litWhilePlaying)
         case .volume:
             if case let .image(source)? = item.additionalParameters[.image] {
                 barItem = VolumeViewController(identifier: identifier, image: source.image)

@@ -456,7 +456,8 @@ enum ItemCatalog {
 
         // Media
         simple("previous", "Previous", "backward.fill", "Media"),
-        simple("play", "Play / Pause", "playpause.fill", "Media"),
+        ItemTypeInfo(type: "play", name: "Play / Pause", symbol: "playpause.fill", category: "Media", defaults: [:],
+                     fields: [FieldSpec(path: "litWhilePlaying", label: "Lit while playing", kind: .choice(["pause", "play"]))]),
         simple("next", "Next", "forward.fill", "Media"),
         simple("volumeDown", "Volume Down", "speaker.wave.1", "Media"),
         simple("volumeUp", "Volume Up", "speaker.wave.3", "Media"),

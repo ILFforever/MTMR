@@ -26,6 +26,9 @@ BRIDGE_HDR  := $(SRC)/CBridge/TouchBarPrivateApi-Bridging.h
 SWIFT_SRCS  := $(shell find $(SRC) -name '*.swift')
 C_SRCS      := $(wildcard $(SRC)/CBridge/*.m $(SRC)/CBridge/*.c)
 ASSETS      := $(SRC)/Assets.xcassets
+# Loaded by /usr/bin/perl rather than linked into the app (see NowPlaying.swift).
+HELPER_SRC  := $(SRC)/NowPlayingHelper/NowPlayingHelper.m
+HELPER      := $(BUILD)/NowPlayingHelper.dylib
 
 FW_FLAGS    := -F build-support/Frameworks -F $(SDK)/System/Library/PrivateFrameworks
 FRAMEWORKS  := -framework DFRFoundation -framework MultitouchSupport \
@@ -56,7 +59,19 @@ $(BUILD)/$(APP_NAME): $(SWIFT_SRCS) $(C_SRCS) $(wildcard $(SRC)/CBridge/*.h) Mak
 	done
 	lipo -create $(foreach a,$(ARCHS),$(OBJ)/$(a)/$(APP_NAME)) -output $@
 
-$(APP): $(BUILD)/$(APP_NAME) $(SRC)/Info.plist $(SRC)/MTMR.entitlements
+# Changes only when ARCHS does, so switching to or from `make universal` relinks.
+$(BUILD)/archs: FORCE
+	@mkdir -p $(BUILD)
+	@echo "$(ARCHS)" | cmp -s - $@ || echo "$(ARCHS)" > $@
+FORCE:
+
+# Apple's perl may run as either architecture, so the helper is always universal.
+$(HELPER): $(HELPER_SRC) Makefile
+	@mkdir -p $(BUILD)
+	clang -dynamiclib -arch arm64 -arch x86_64 -mmacosx-version-min=$(MIN_MACOS) -isysroot $(SDK) \
+	    -fobjc-arc -O2 -framework Foundation $(HELPER_SRC) -o $@
+
+$(APP): $(BUILD)/$(APP_NAME) $(HELPER) $(SRC)/Info.plist $(SRC)/MTMR.entitlements
 	@rm -rf $(APP) && mkdir -p $(CONTENTS)/MacOS $(CONTENTS)/Resources
 	cp $(BUILD)/$(APP_NAME) $(CONTENTS)/MacOS/
 	@# Info.plist: substitute the Xcode build-setting variables.
@@ -76,6 +91,8 @@ $(APP): $(BUILD)/$(APP_NAME) $(SRC)/Info.plist $(SRC)/MTMR.entitlements
 	done; iconutil -c icns $$iconset -o $(CONTENTS)/Resources/AppIcon.icns
 	cp $(SRC)/defaultPreset.json $(CONTENTS)/Resources/
 	cp -R $(SRC)/AppleScripts/ $(CONTENTS)/Resources/
+	cp $(HELPER) $(CONTENTS)/Resources/
+	codesign --force --sign "$(SIGN_ID)" $(CONTENTS)/Resources/NowPlayingHelper.dylib
 	codesign --force --sign "$(SIGN_ID)" --entitlements $(SRC)/MTMR.entitlements $(APP)
 	@echo "==> built $(APP)"
 
