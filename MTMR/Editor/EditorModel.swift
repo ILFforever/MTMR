@@ -444,7 +444,7 @@ enum ItemCatalog {
                               FieldSpec(path: "percentInside", label: "Percentage inside the icon", kind: .toggle(default: false)),
                               FieldSpec(path: "showTime", label: "Show time remaining", kind: .toggle(default: false)),
                               FieldSpec(path: "animate", label: "Animate while charging", kind: .toggle(default: true)),
-                              FieldSpec(path: "tapToCycle", label: "Tap to cycle % / time / icon", kind: .toggle(default: true)),
+                              FieldSpec(path: "tapToCycle", label: "Tap to show time remaining", kind: .toggle(default: true)),
                               FieldSpec(path: "lowThreshold", label: "Low battery warning at (%)", kind: .number(placeholder: "20"))]),
         ItemTypeInfo(type: "weather", name: "Weather", symbol: "cloud.sun", category: "Status", defaults: [:],
                      fields: [FieldSpec(path: "api_key", label: "OpenWeatherMap API key", kind: .text(placeholder: "required")),

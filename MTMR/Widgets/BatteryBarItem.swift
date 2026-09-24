@@ -8,7 +8,7 @@
 //  Stripe: a drawn battery icon whose fill tracks the charge (green while
 //  charging, yellow in Low Power Mode, red when low, with a sweep animation
 //  while charging), plus optional percentage and time remaining. Tapping can
-//  cycle what's shown; holding opens Battery settings.
+//  switch to time remaining and back; holding opens Battery settings.
 //
 //    { "type": "battery", "showIcon": true, "showPercentage": true,
 //      "percentInside": false, "showTime": false, "animate": true,
@@ -33,8 +33,8 @@ class BatteryBarItem: CustomButtonTouchBarItem, TearDownable {
     private let batteryInfo = BatteryInfo()
     private let options: BatteryOptions
 
-    /// What a tap has switched to. 0 shows what the options say.
-    private var cycleStep = 0
+    /// Whether a tap has switched to time remaining; otherwise shows what the options say.
+    private var showingTimeLeft = false
     private var animationTimer: Timer?
     private var sweepPhase: CGFloat = 0
 
@@ -77,18 +77,17 @@ class BatteryBarItem: CustomButtonTouchBarItem, TearDownable {
         var time: Bool
     }
 
-    /// Tap-to-cycle steps: as configured → time remaining → icon only.
+    /// Tapping switches between the battery (as the options configure it) and
+    /// time remaining.
     private var display: Display {
-        let configured = Display(icon: options.showIcon, percentage: options.showPercentage, time: options.showTime)
-        switch cycleStep {
-        case 1: return Display(icon: options.showIcon, percentage: false, time: true)
-        case 2: return Display(icon: true, percentage: false, time: false)
-        default: return configured
+        if showingTimeLeft {
+            return Display(icon: options.showIcon, percentage: false, time: true)
         }
+        return Display(icon: options.showIcon, percentage: options.showPercentage, time: options.showTime)
     }
 
     private func cycle() {
-        cycleStep = (cycleStep + 1) % 3
+        showingTimeLeft.toggle()
         refresh()
     }
 
