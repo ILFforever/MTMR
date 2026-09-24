@@ -11,8 +11,10 @@ import SwiftUI
 struct ItemInspector: View {
     @ObservedObject var item: EditorItem
     let isTopLevel: Bool
-    /// The editor's selection, so the Items section can open a child.
-    let selection: Binding<UUID?>
+    /// For the Items section to open a child. A plain reference, not a Binding:
+    /// SwiftUI can't tell a Binding is unchanged, so it would rebuild this whole
+    /// form every time the window redraws (e.g. on each reorder during a drag).
+    let session: EditorSession
 
     @AppStorage("inspector.layout") private var layoutOpen = true
     @AppStorage("inspector.appearance") private var appearanceOpen = true
@@ -72,7 +74,7 @@ struct ItemInspector: View {
 
                 if item.info.isContainer {
                     InspectorSection(title: "Items", symbol: "square.stack", isExpanded: $itemsOpen) {
-                        ContainerItemsEditor(container: item, selection: selection)
+                        ContainerItemsEditor(container: item, session: session)
                     }
                 }
 
@@ -518,7 +520,7 @@ struct AppRuleRow: View {
 /// The items inside a group or popover: open one to edit it, reorder, remove, or add.
 struct ContainerItemsEditor: View {
     @ObservedObject var container: EditorItem
-    let selection: Binding<UUID?>
+    let session: EditorSession
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -533,7 +535,7 @@ struct ContainerItemsEditor: View {
                 ChildRow(child: child,
                          canMoveUp: index > 0,
                          canMoveDown: index < children.count - 1,
-                         open: { selection.wrappedValue = child.id },
+                         open: { session.selection = child.id },
                          move: { offset in move(index, by: offset) },
                          remove: { remove(child) })
                 Divider().opacity(0.5)

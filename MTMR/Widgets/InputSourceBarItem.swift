@@ -14,7 +14,8 @@ class InputSourceBarItem: CustomButtonTouchBarItem {
 
     init(identifier: NSTouchBarItem.Identifier) {
         notificationCenter = CFNotificationCenterGetDistributedCenter()
-        super.init(identifier: identifier, title: "⏳")
+        super.init(identifier: identifier, title: "")
+        hideUntilFirstTitle()
 
         observeIputSourceChangedNotification()
         textInputSourceDidChange()

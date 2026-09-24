@@ -1,3 +1,16 @@
+## Known issues
+
+* **Settings bar: dragging sometimes lags.** Reordering on the editor bar
+  (e.g. dragging uptime back and forth past the IP or network-speed items)
+  occasionally stutters. Ordering itself works. Already ruled out or fixed:
+  the swap-back loop between items of different widths (positions now come
+  from pointer vs. item midpoints, per section: `ZoneDropDelegate`), redundant
+  `@Published` writes (`EditorSession.set`), the inspector and library
+  redrawing on every reorder, saves/bar reloads mid-drag (`holdsSaves`), and
+  the 0.5s snapshot refresh (paused while dragging). Next suspects: the
+  animated relayout of the horizontal `ScrollView` zones, and the
+  `GeometryReader` preference pass on every chip during that animation.
+
 ## TODOs
 
 * try view controllers on `NSCustomTouchBarItem` instead of subclassing item itself

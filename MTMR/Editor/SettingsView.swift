@@ -18,10 +18,27 @@ final class EditorSession: ObservableObject {
     @Published var dragging: DragPayload?
     /// Which drop zone is highlighted: "left", "center", "right" or "library".
     @Published var targetZone: String?
+    /// Where a new item being dragged from the library would land; the bar makes room there.
+    @Published var dropSlot: DropSlot?
+    /// When a drop target last claimed the drag (see ZoneDropDelegate.dropExited).
+    var dropTouched = Date.distantPast
+    /// Where each item on the bar is, in window coordinates (top-left origin), so a
+    /// press can select it before any drag starts (see SettingsWindowController).
+    var chipFrames: [UUID: CGRect] = [:]
+    /// Where each item is within its section, in the section's own coordinates:
+    /// the space drops on that section report the pointer in (see ZoneDropDelegate).
+    var zoneFrames: [UUID: CGRect] = [:]
     /// The left pane: the item library ("library") or the outline of items ("outline").
     @Published var leftPane = "library"
     /// Filters the library tiles or the outline rows.
     @Published var search = ""
+
+    /// Sets a published value only if it differs. Assigning an equal value still
+    /// publishes, and each publish redraws the whole window, which drop targets
+    /// (called on every pointer move during a drag) would otherwise do constantly.
+    func set<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<EditorSession, Value>, _ value: Value) {
+        if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }
+    }
 }
 
 struct SettingsView: View {
@@ -54,10 +71,17 @@ struct SettingsView: View {
 
     /// The bar, drawn from live pictures of the real items, and edited in place.
     private var stage: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            StageCaption(title: "Your Touch Bar", live: true,
-                         hint: "Drag to reorder · drag into the library to remove · click to edit")
+        VStack(spacing: 5) {
+            HStack {
+                Text("Live preview")
+                Spacer()
+                Text("Drag off to remove")
+            }
+            .font(.system(size: 11))
+            .foregroundColor(.secondary)
+            .padding(.horizontal, 4)
             BarCanvas(document: document, session: session, snapshots: snapshots)
+                .help("Click an item to edit it. Drag to reorder, or drag into the library to remove.")
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 14)
@@ -68,18 +92,15 @@ struct SettingsView: View {
             HStack(spacing: 8) {
                 SearchField(placeholder: session.leftPane == "library" ? "Search items" : "Search your bar",
                             text: $session.search)
-                Picker("", selection: $session.leftPane) {
-                    Image(systemName: "square.grid.2x2").help("Library: every item you can add").tag("library")
-                    Image(systemName: "list.bullet").help("Outline: the items on your bar").tag("outline")
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
+                PaneToggle(selection: $session.leftPane, options: [
+                    ("library", "square.grid.2x2", "Library: every item you can add"),
+                    ("outline", "list.bullet", "Outline: the items on your bar"),
+                ])
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             if session.leftPane == "library" {
-                ItemLibrary(document: document, session: session)
+                ItemLibrary(document: document, session: session, snapshots: snapshots)
             } else {
                 sidebar
             }
@@ -89,24 +110,18 @@ struct SettingsView: View {
     // MARK: Header
 
     /// Lives in the (transparent) title bar: preset on the left after the window
-    /// buttons, then undo/redo, save status and the file button on the right.
+    /// buttons, then any save error, undo/redo and the file button on the right.
     private var header: some View {
         HStack(spacing: 10) {
             presetMenu
             Spacer()
-            Group {
-                if let error = document.loadError {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundColor(.red)
-                } else if let saved = document.lastSaved {
-                    Text("Saved \(saved.formatted(date: .omitted, time: .shortened))")
-                        .foregroundColor(.secondary)
-                } else {
-                    Text("Changes apply as you edit").foregroundColor(.secondary)
-                }
+            // Edits show on the bar straight away, so only problems need a message.
+            if let error = document.loadError {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundColor(.red)
+                    .font(.callout)
+                    .lineLimit(1)
             }
-            .font(.callout)
-            .lineLimit(1)
             HStack(spacing: 2) {
                 Button(action: document.undo) { Image(systemName: "arrow.uturn.backward") }
                     .disabled(!document.canUndo)
@@ -233,7 +248,7 @@ struct SettingsView: View {
     @ViewBuilder
     private var detail: some View {
         if let item = document.find(session.selection) {
-            ItemInspector(item: item, isTopLevel: document.items.contains { $0 === item }, selection: $session.selection)
+            ItemInspector(item: item, isTopLevel: document.items.contains { $0 === item }, session: session)
                 .id(item.id) // fresh field state per item
         } else {
             VStack(spacing: 10) {

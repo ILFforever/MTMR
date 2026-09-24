@@ -11,16 +11,32 @@
 
 import AppKit
 
+/// The picture of the item being dragged from the library, kept apart from the
+/// bar's pictures so only the views showing it redraw when it changes.
+final class DragPreviewModel: ObservableObject {
+    @Published fileprivate(set) var image: NSImage?
+    fileprivate(set) var type: String?
+}
+
 final class ItemSnapshotModel: ObservableObject {
     @Published private(set) var images: [UUID: NSImage] = [:]
     /// Items the bar isn't showing right now, e.g. because of a "when" condition.
     @Published private(set) var hidden = Set<UUID>()
 
-    private let document: PresetDocument
-    private var timer: Timer?
+    /// The item being dragged from the library, drawn from a real, off-bar
+    /// instance of it, so the bar can show exactly what will be added.
+    let preview = DragPreviewModel()
 
-    init(document: PresetDocument) {
+    private let document: PresetDocument
+    private let session: EditorSession
+    private var timer: Timer?
+    private var previewItem: NSTouchBarItem?
+    /// When the mouse button was seen up during a drag.
+    private var releasedDuringDrag: Date?
+
+    init(document: PresetDocument, session: EditorSession) {
         self.document = document
+        self.session = session
     }
 
     func start() {
@@ -35,6 +51,26 @@ final class ItemSnapshotModel: ObservableObject {
     }
 
     func refresh() {
+        // SwiftUI doesn't report a cancelled drag; notice it by the mouse staying
+        // up. A real drop arrives a few hundred milliseconds after the release, so
+        // allow for that before giving up on it.
+        if session.dragging != nil, NSEvent.pressedMouseButtons == 0 {
+            let released = releasedDuringDrag ?? Date()
+            releasedDuringDrag = released
+            if Date().timeIntervalSince(released) > 1 {
+                session.endDrag(document)
+                endPreview()
+                releasedDuringDrag = nil
+            }
+        } else {
+            releasedDuringDrag = nil
+        }
+        // Nothing is redrawn during a press or a drag: it costs frames mid-drag, and
+        // redrawing an item as a press begins would cancel dragging it.
+        guard NSEvent.pressedMouseButtons == 0, session.dragging == nil else { return }
+        // Before a drag starts, the preview of the pointed-at library tile stays live.
+        if previewItem != nil { snapshotPreview() }
+
         let bar = TouchBarController.shared
         let identifiers = bar.orderedIdentifiers
         guard bar.currentPresetPath == document.path, !document.hasPendingSave,
@@ -53,6 +89,46 @@ final class ItemSnapshotModel: ObservableObject {
         }
         self.images = images
         self.hidden = hidden
+    }
+
+    // MARK: Library drag preview
+
+    func beginPreview(of type: String) {
+        guard preview.type != type else { return }
+        endPreview()
+        preview.type = type
+        let editorItem = ItemCatalog.newItem(type, align: "center", document: document)
+        let identifier = NSTouchBarItem.Identifier("com.ilfforever.stripe.preview." + UUID().uuidString)
+        guard let data = JSONValue.array([editorItem.json]).pretty().data(using: .utf8),
+              let definition = data.barItemDefinitions()?.first,
+              let item = TouchBarController.shared.createItem(forIdentifier: identifier, definition: definition),
+              item.view != nil else { return }
+        previewItem = item
+        snapshotPreview()
+        // Widgets fill in their first reading a moment later.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.snapshotPreview() }
+    }
+
+    func endPreview() {
+        if let item = previewItem { tearDownItems([item]) }
+        previewItem = nil
+        preview.type = nil
+        if preview.image != nil { preview.image = nil }
+    }
+
+    /// Shows the preview picture for a just-dropped item until the bar has built it.
+    func adoptPreview(for id: UUID) {
+        if let image = preview.image { images[id] = image }
+    }
+
+    private func snapshotPreview() {
+        guard let view = previewItem?.view else { return }
+        // Off the bar, the view needs the bar's dark look and a size of its own.
+        view.appearance = NSAppearance(named: .darkAqua)
+        let size = view.fittingSize
+        view.setFrameSize(NSSize(width: max(size.width, 30), height: 30))
+        view.layoutSubtreeIfNeeded()
+        preview.image = ItemSnapshotModel.snapshot(of: view)
     }
 
     static func snapshot(of view: NSView) -> NSImage? {

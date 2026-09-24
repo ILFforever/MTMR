@@ -42,7 +42,8 @@ class WeatherBarItem: CustomButtonTouchBarItem, CLLocationManagerDelegate {
             iconsSource = iconsText
         }
 
-        super.init(identifier: identifier, title: "⏳")
+        super.init(identifier: identifier, title: "")
+        hideUntilFirstTitle()
 
         let status = CLLocationManager.authorizationStatus()
         if status == .restricted || status == .denied {

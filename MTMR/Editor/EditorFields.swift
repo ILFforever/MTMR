@@ -17,30 +17,47 @@ import SwiftUI
 enum EditorStyle {
     /// Inspector boxes and library tiles.
     static let boxRadius: CGFloat = 10
-    /// The two bar pictures at the top of the window.
+    /// The bar at the top of the window.
     static let barRadius: CGFloat = 10
     /// Free-text fields; wider ones are hard to scan against the labels.
     static let fieldWidth: CGFloat = 260
 }
 
-/// A small caption above each bar picture, with an optional hint on the right.
-struct StageCaption: View {
-    let title: String
-    var live = false
-    var hint: String? = nil
+/// A compact icon switch whose highlight slides to the chosen option.
+struct PaneToggle: View {
+    @Binding var selection: String
+    /// (tag, SF Symbol, tooltip)
+    let options: [(String, String, String)]
+
+    private static let segment = CGSize(width: 28, height: 22)
+
+    private var selectedIndex: Int {
+        options.firstIndex { $0.0 == selection } ?? 0
+    }
 
     var body: some View {
-        HStack(spacing: 6) {
-            if live {
-                Circle().fill(Color.green).frame(width: 6, height: 6)
-            }
-            Text(title).font(.system(size: 11, weight: .semibold)).foregroundColor(.secondary)
-            Spacer()
-            if let hint = hint {
-                Text(hint).font(.system(size: 11)).foregroundColor(Color(nsColor: .tertiaryLabelColor))
+        ZStack(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Color.accentColor)
+                .frame(width: PaneToggle.segment.width, height: PaneToggle.segment.height)
+                .offset(x: CGFloat(selectedIndex) * PaneToggle.segment.width)
+            HStack(spacing: 0) {
+                ForEach(options, id: \.0) { tag, symbol, help in
+                    Button(action: { selection = tag }) {
+                        Image(systemName: symbol)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(selection == tag ? .white : .secondary)
+                            .frame(width: PaneToggle.segment.width, height: PaneToggle.segment.height)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(help)
+                }
             }
         }
-        .padding(.horizontal, 2)
+        .padding(2)
+        .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.08)))
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: selection)
     }
 }
 

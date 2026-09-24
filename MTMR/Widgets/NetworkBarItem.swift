@@ -28,7 +28,11 @@ class NetworkBarItem: CustomButtonTouchBarItem, Widget, TearDownable {
     init(identifier: NSTouchBarItem.Identifier, flip: Bool = false, units: String) {
         self.flip = flip
         self.units = units
-        super.init(identifier: identifier, title: " ")
+        super.init(identifier: identifier, title: "")
+        hideUntilFirstTitle()
+        // Wide enough for any reading, so the key keeps its size as speeds change.
+        minimumTitleWidth = ceil(NSAttributedString(string: "↑000.0 KB/s", attributes: [.font: NetworkBarItem.titleFont]).size().width
+            + NetworkBarItem.arrowGap)
         startMonitoringProcess()
     }
 
@@ -146,6 +150,7 @@ class NetworkBarItem: CustomButtonTouchBarItem, Widget, TearDownable {
             attributes: [
                 NSAttributedString.Key.foregroundColor: NSColor.systemBlue,
                 NSAttributedString.Key.font: titleFont,
+                NSAttributedString.Key.kern: NetworkBarItem.arrowGap,
                 ]))
         
         appendString.append(NSMutableAttributedString(
@@ -161,6 +166,7 @@ class NetworkBarItem: CustomButtonTouchBarItem, Widget, TearDownable {
             attributes: [
                 NSAttributedString.Key.foregroundColor: NSColor.systemRed,
                 NSAttributedString.Key.font: titleFont,
+                NSAttributedString.Key.kern: NetworkBarItem.arrowGap,
                 ]))
             
             appendString.append(NSMutableAttributedString(
@@ -170,8 +176,12 @@ class NetworkBarItem: CustomButtonTouchBarItem, Widget, TearDownable {
                 ]))
     }
     
+    private static let titleFont = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+    /// Space between an arrow and its speed.
+    private static let arrowGap: CGFloat = 2
+
     func setTitle(up: String, down: String) {
-        let titleFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: NSFont.Weight.regular)
+        let titleFont = NetworkBarItem.titleFont
         
         let newTitle: NSMutableAttributedString = NSMutableAttributedString(string: "")
         
@@ -184,15 +194,13 @@ class NetworkBarItem: CustomButtonTouchBarItem, Widget, TearDownable {
         }
         
         
-        // Two lines must fit the 30pt bar: pin the line height instead of using
-        // the font's default leading, which pushes the second line off the bottom.
+        // Two 12pt lines leave 3pt above and below in the 30pt key; the button
+        // cell centers the block (see CustomButtonCell.drawTitle).
         let paragraph = NSMutableParagraphStyle()
-        paragraph.minimumLineHeight = 13
-        paragraph.maximumLineHeight = 13
+        paragraph.minimumLineHeight = 12
+        paragraph.maximumLineHeight = 12
         paragraph.alignment = .left
-        let range = NSRange(location: 0, length: newTitle.length)
-        newTitle.addAttribute(.paragraphStyle, value: paragraph, range: range)
-        newTitle.addAttribute(.baselineOffset, value: -1, range: range)
+        newTitle.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: newTitle.length))
 
         self.attributedTitle = newTitle
     }

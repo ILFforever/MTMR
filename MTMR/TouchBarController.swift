@@ -94,6 +94,8 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     var rightIdentifiers: [NSTouchBarItem.Identifier] = []
     /// Every item's identifier in preset order, so the editor can match its items to the bar's.
     private(set) var orderedIdentifiers: [NSTouchBarItem.Identifier] = []
+    /// Each item's JSON (keys sorted), to spot items that didn't change on a reload.
+    private var itemKeys: [NSTouchBarItem.Identifier: String] = [:]
     var basicViewIdentifier = NSTouchBarItem.Identifier("com.toxblh.mtmr.scrollView.".appending(UUID().uuidString))
     var basicView: BasicView?
     var swipeItems: [SwipeItem] = []
@@ -145,27 +147,49 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         reloadStandardConfig()
     }
 
-    func createAndUpdatePreset(newJsonItems: [BarItemDefinition]) {
-        if let oldBar = self.touchBar {
-            minimizeSystemModal(oldBar)
+    /// Loads a preset into the bar that's already showing. Items whose JSON didn't
+    /// change keep running as they are; only new or changed ones are built (see
+    /// createItems), so an edit doesn't blank the bar or restart every widget.
+    func createAndUpdatePreset(newJsonItems: [BarItemDefinition], keys: [String]? = nil) {
+        if touchBar == nil {
+            touchBar = NSTouchBar()
         }
-        touchBar = NSTouchBar()
+        // An open group or popover may belong to an item that's about to change.
+        if touchBar.delegate != nil, touchBar.delegate !== self {
+            for case let popover as PopoverBarItem in items.values {
+                popover.collapse()
+            }
+            if touchBar.delegate !== self { restoreMainBar() }
+        }
+
+        var reusable: [String: [NSTouchBarItem.Identifier]] = [:]
+        for identifier in orderedIdentifiers {
+            if let key = itemKeys[identifier] { reusable[key, default: []].append(identifier) }
+        }
+
         jsonItems = newJsonItems
         itemDefinitions = [:]
         leftIdentifiers = []
         centerIdentifiers = []
         rightIdentifiers = []
         orderedIdentifiers = []
-        tearDownItems(items.values)
-        tearDownItems(swipeItems)
-        items = [:]
-        swipeItems = []
+        itemKeys = [:]
         visibleIdentifiers = nil
         ConditionMonitor.shared.reset()
 
-        loadItemDefinitions(jsonItems: jsonItems)
-        
+        loadItemDefinitions(jsonItems: jsonItems, keys: keys?.count == jsonItems.count ? keys : nil, reusing: reusable)
+
         updateActiveApp()
+    }
+
+    /// Each item of a preset file as JSON with sorted keys, for comparing reloads.
+    static func itemKeys(of data: Data?) -> [String]? {
+        guard let text = data?.utf8string?.stripComments(), let json = text.data(using: .utf8),
+              let array = (try? JSONSerialization.jsonObject(with: json)) as? [Any] else { return nil }
+        return array.map { item in
+            (try? JSONSerialization.data(withJSONObject: item, options: [.sortedKeys, .fragmentsAllowed]))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? UUID().uuidString
+        }
     }
     
     /// The items currently built and shown; nil forces a rebuild.
@@ -178,11 +202,9 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         if visible == visibleIdentifiers {
             return
         }
-        tearDownItems(items.values)
-        tearDownItems(swipeItems)
         visibleIdentifiers = visible
-        createItems(visible)
-        
+        let created = createItems(visible)
+
         let centerItems = centerIdentifiers.compactMap({ (identifier) -> NSTouchBarItem? in
             items[identifier]
         })
@@ -190,11 +212,6 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         let centerScrollArea = NSTouchBarItem.Identifier("com.toxblh.mtmr.scrollArea.".appending(UUID().uuidString))
         let scrollArea = ScrollViewItem(identifier: centerScrollArea, items: centerItems)
         
-        basicViewIdentifier = NSTouchBarItem.Identifier("com.toxblh.mtmr.scrollView.".appending(UUID().uuidString))
-
-        touchBar.delegate = self
-        touchBar.defaultItemIdentifiers = [basicViewIdentifier]
-
         let leftItems = leftIdentifiers.compactMap({ (identifier) -> NSTouchBarItem? in
             items[identifier]
         })
@@ -202,8 +219,33 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             items[identifier]
         })
 
-        basicView = BasicView(identifier: basicViewIdentifier, items:leftItems + [scrollArea] + rightItems, swipeItems: swipeItems)
-        basicView?.legacyGesturesEnabled = AppSettings.multitouchGestures
+        let barItems = leftItems + [scrollArea] + rightItems
+        if let basicView = basicView {
+            // Swap the views inside the bar that's showing; re-presenting a new bar
+            // would blank it for a moment.
+            basicView.setItems(barItems, swipeItems: swipeItems)
+        } else {
+            basicViewIdentifier = NSTouchBarItem.Identifier("com.toxblh.mtmr.scrollView.".appending(UUID().uuidString))
+            basicView = BasicView(identifier: basicViewIdentifier, items: barItems, swipeItems: swipeItems)
+            basicView?.legacyGesturesEnabled = AppSettings.multitouchGestures
+            touchBar.delegate = self
+            touchBar.defaultItemIdentifiers = [basicViewIdentifier]
+        }
+        fadeIn(created)
+    }
+
+    /// New items appear with a short fade rather than popping in. Items still
+    /// waiting for their first title fade in themselves when it arrives.
+    private func fadeIn(_ newItems: [NSTouchBarItem]) {
+        for item in newItems {
+            if (item as? CustomButtonTouchBarItem)?.isAwaitingFirstTitle == true { continue }
+            guard let view = item.view else { continue }
+            view.alphaValue = 0
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.25
+                view.animator().alphaValue = 1
+            }
+        }
     }
 
     @objc func activeApplicationChanged(_: Notification) {
@@ -272,17 +314,29 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
 
     private func loadPreset(path: String) {
         currentPresetPath = path
-        let items = path.fileData?.barItemDefinitions() ?? [BarItemDefinition(type: .staticButton(title: "bad preset"), actions: [], action: .none, legacyLongAction: .none, additionalParameters: [:])]
-        createAndUpdatePreset(newJsonItems: items)
+        let data = path.fileData
+        let items = data?.barItemDefinitions() ?? [BarItemDefinition(type: .staticButton(title: "bad preset"), actions: [], action: .none, legacyLongAction: .none, additionalParameters: [:])]
+        createAndUpdatePreset(newJsonItems: items, keys: TouchBarController.itemKeys(of: data))
     }
 
-    func loadItemDefinitions(jsonItems: [BarItemDefinition]) {
+    /// `reusing` maps an item's JSON to identifiers of identical items already on
+    /// the bar; a match takes over that identifier, and with it the live item.
+    func loadItemDefinitions(jsonItems: [BarItemDefinition], keys: [String]? = nil,
+                             reusing reusable: [String: [NSTouchBarItem.Identifier]] = [:]) {
+        var reusable = reusable
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "HH-mm-ss"
         let time = dateFormatter.string(from: Date())
-        for item in jsonItems {
-            let identifierString = item.type.identifierBase.appending(time + "--" + UUID().uuidString)
-            let identifier = NSTouchBarItem.Identifier(identifierString)
+        for (index, item) in jsonItems.enumerated() {
+            let key = keys?[index]
+            let identifier: NSTouchBarItem.Identifier
+            if let key = key, let reused = reusable[key]?.first {
+                reusable[key]?.removeFirst()
+                identifier = reused
+            } else {
+                identifier = NSTouchBarItem.Identifier(item.type.identifierBase.appending(time + "--" + UUID().uuidString))
+            }
+            if let key = key { itemKeys[identifier] = key }
             itemDefinitions[identifier] = item
             orderedIdentifiers.append(identifier)
             if item.align == .left {
@@ -297,20 +351,32 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         }
     }
 
-    func createItems(_ visible: Set<NSTouchBarItem.Identifier>) {
-        items = [:]
+    /// Builds the visible items, keeping any already built for the same identifier,
+    /// and stops the ones no longer shown. Returns the newly built items.
+    @discardableResult
+    func createItems(_ visible: Set<NSTouchBarItem.Identifier>) -> [NSTouchBarItem] {
+        tearDownItems(swipeItems)
         swipeItems = []
+        var next: [NSTouchBarItem.Identifier: NSTouchBarItem] = [:]
+        var created: [NSTouchBarItem] = []
 
-        for (identifier, definition) in itemDefinitions {
-            if visible.contains(identifier) {
-                let item = createItem(forIdentifier: identifier, definition: definition)
-                if item is SwipeItem {
-                    swipeItems.append(item as! SwipeItem)
-                } else {
-                    items[identifier] = item
-                }
+        for (identifier, definition) in itemDefinitions where visible.contains(identifier) {
+            if let existing = items[identifier] {
+                next[identifier] = existing
+                continue
+            }
+            guard let item = createItem(forIdentifier: identifier, definition: definition) else { continue }
+            if let swipe = item as? SwipeItem {
+                swipeItems.append(swipe)
+            } else {
+                next[identifier] = item
+                created.append(item)
             }
         }
+
+        tearDownItems(items.filter { next[$0.key] == nil }.map { $0.value })
+        items = next
+        return created
     }
 
     /// Whether an item's "when" condition (if any) currently holds.

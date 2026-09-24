@@ -15,7 +15,8 @@ class CPUBarItem: CustomButtonTouchBarItem {
 
     init(identifier: NSTouchBarItem.Identifier, refreshInterval: TimeInterval) {
         self.refreshInterval = refreshInterval
-        super.init(identifier: identifier, title: "⏳")
+        super.init(identifier: identifier, title: "")
+        hideUntilFirstTitle()
                 
         // Set default image
         if self.image == nil {
