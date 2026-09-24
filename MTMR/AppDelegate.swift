@@ -8,7 +8,7 @@
 
 import Cocoa
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     var isBlockedApp: Bool = false
 
@@ -112,45 +112,64 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         createMenu()
     }
 
+    /// The menu is rebuilt each time it opens (menuNeedsUpdate), so the current
+    /// app's name and the Accessibility status are always up to date.
     func createMenu() {
         let menu = NSMenu()
+        menu.delegate = self
+        statusItem.menu = menu
+    }
 
-        let startAtLogin = NSMenuItem(title: "Start at login", action: #selector(toggleStartAtLogin(_:)), keyEquivalent: "L")
-        startAtLogin.state = LaunchAtLoginController().launchAtLogin ? .on : .off
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
 
-        let toggleBlackList = NSMenuItem(title: "Toggle current app in blacklist", action: #selector(toggleBlackListedApp(_:)), keyEquivalent: "B")
-        toggleBlackList.state = isBlockedApp ? .on : .off
+        // Icons on the main rows, like macOS 26's own menus (which add one to Quit automatically).
+        func icon(_ symbol: String) -> NSImage? { NSImage(systemSymbolName: symbol, accessibilityDescription: nil) }
 
-        let hideControlStrip = NSMenuItem(title: "Hide Control Strip", action: #selector(toggleControlStrip(_:)), keyEquivalent: "T")
-        hideControlStrip.state = AppSettings.showControlStripState ? .off : .on
-
-        let hapticFeedback = NSMenuItem(title: "Haptic Feedback", action: #selector(toggleHapticFeedback(_:)), keyEquivalent: "H")
-        hapticFeedback.state = AppSettings.hapticFeedbackState ? .on : .off
-
-        let multitouchGestures = NSMenuItem(title: "Volume/Brightness gestures", action: #selector(toggleMultitouch(_:)), keyEquivalent: "")
-        multitouchGestures.state = AppSettings.multitouchGestures ? .on : .off
-
-        let settingSeparator = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
-        settingSeparator.isEnabled = false
-
-        menu.addItem(withTitle: "Settings…", action: #selector(openSettings(_:)), keyEquivalent: ",")
-        menu.addItem(withTitle: "Edit JSON…", action: #selector(openPreferences(_:)), keyEquivalent: "")
-        menu.addItem(withTitle: "Open preset", action: #selector(openPreset(_:)), keyEquivalent: "O")
+        menu.addItem(withTitle: "\(Brand.name) Settings…", action: #selector(openSettings(_:)), keyEquivalent: ",").image = icon("gearshape")
+        let openAtLogin = NSMenuItem(title: "Open at Login", action: #selector(toggleStartAtLogin(_:)), keyEquivalent: "")
+        openAtLogin.state = LaunchAtLoginController().launchAtLogin ? .on : .off
+        openAtLogin.image = icon("power")
+        menu.addItem(openAtLogin)
 
         if !AccessibilityPermission.isGranted {
-            menu.addItem(withTitle: "Allow Accessibility (for media keys)…", action: #selector(requestAccessibility(_:)), keyEquivalent: "")
+            let allow = NSMenuItem(title: "Allow Accessibility for Media Keys…", action: #selector(requestAccessibility(_:)), keyEquivalent: "")
+            allow.image = icon("exclamationmark.triangle")
+            menu.addItem(allow)
         }
 
-        menu.addItem(NSMenuItem.separator())
-        menu.addItem(settingSeparator)
-        menu.addItem(hapticFeedback)
-        menu.addItem(hideControlStrip)
-        menu.addItem(toggleBlackList)
-        menu.addItem(startAtLogin)
-        menu.addItem(multitouchGestures)
-        menu.addItem(NSMenuItem.separator())
-        menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        statusItem.menu = menu
+        // Hiding the bar for the app in front, named so it's clear what it does.
+        if let app = NSWorkspace.shared.frontmostApplication, app.bundleIdentifier != Bundle.main.bundleIdentifier,
+           let name = app.localizedName {
+            menu.addItem(.separator())
+            let hide = NSMenuItem(title: "Hide \(Brand.name) in \(name)", action: #selector(toggleBlackListedApp(_:)), keyEquivalent: "")
+            hide.state = isBlockedApp ? .on : .off
+            hide.image = icon("eye.slash")
+            menu.addItem(hide)
+        }
+
+        menu.addItem(.separator())
+
+        let options = NSMenu()
+        let haptics = options.addItem(withTitle: "Haptic Feedback", action: #selector(toggleHapticFeedback(_:)), keyEquivalent: "")
+        haptics.state = AppSettings.hapticFeedbackState ? .on : .off
+        let controlStrip = options.addItem(withTitle: "Hide Control Strip", action: #selector(toggleControlStrip(_:)), keyEquivalent: "")
+        controlStrip.state = AppSettings.showControlStripState ? .off : .on
+        let gestures = options.addItem(withTitle: "Volume & Brightness Gestures", action: #selector(toggleMultitouch(_:)), keyEquivalent: "")
+        gestures.state = AppSettings.multitouchGestures ? .on : .off
+        let optionsItem = menu.addItem(withTitle: "Options", action: nil, keyEquivalent: "")
+        optionsItem.submenu = options
+        optionsItem.image = icon("slider.horizontal.3")
+
+        let advanced = NSMenu()
+        advanced.addItem(withTitle: "Edit JSON…", action: #selector(openPreferences(_:)), keyEquivalent: "")
+        advanced.addItem(withTitle: "Open Preset File…", action: #selector(openPreset(_:)), keyEquivalent: "")
+        let advancedItem = menu.addItem(withTitle: "Advanced", action: nil, keyEquivalent: "")
+        advancedItem.submenu = advanced
+        advancedItem.image = icon("wrench.and.screwdriver")
+
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Quit \(Brand.name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
     }
 
     func reloadOnDefaultConfigChanged() {
