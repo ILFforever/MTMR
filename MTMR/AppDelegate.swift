@@ -9,7 +9,6 @@
 import Cocoa
 import Sparkle
 
-@NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate {
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     var isBlockedApp: Bool = false
