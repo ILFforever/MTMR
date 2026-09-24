@@ -74,6 +74,9 @@ object is a command:
 | `select N` | Select the Nth top-level item in Settings |
 | `pane NAME` | Show the Settings sidebar's `library` or `outline` |
 | `search TEXT` | Type TEXT into the Settings sidebar's search |
+| `press NAME` | Hold down the first button whose identifier or title contains NAME (shows its pressed color) |
+| `release` | Let go of every held button |
+| `battery` | Open the battery panel (`battery left`: back chevron on the left) |
 
 A one-line sender:
 

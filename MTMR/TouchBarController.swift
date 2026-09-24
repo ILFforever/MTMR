@@ -474,7 +474,9 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             barItem = ShellScriptTouchBarItem(identifier: identifier, source: source, interval: interval)
         case let .timeButton(formatTemplate: template, timeZone: timeZone, locale: locale):
             barItem = TimeTouchBarItem(identifier: identifier, formatTemplate: template, timeZone: timeZone, locale: locale)
-        case let .battery(options):
+        case var .battery(options):
+            // The panel's back chevron defaults to the battery item's side of the bar.
+            if options.panel.closeSide == nil { options.panel.closeSide = item.align == .left ? .left : .right }
             barItem = BatteryBarItem(identifier: identifier, options: options)
         case let .cpu(refreshInterval: refreshInterval):
             barItem = CPUBarItem(identifier: identifier, refreshInterval: refreshInterval)

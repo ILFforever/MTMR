@@ -383,6 +383,18 @@ enum ItemType: Decodable {
             options.animate = try container.decodeIfPresent(Bool.self, forKey: .animate) ?? options.animate
             options.lowThreshold = try container.decodeIfPresent(Int.self, forKey: .lowThreshold) ?? options.lowThreshold
             options.tapToCycle = try container.decodeIfPresent(Bool.self, forKey: .tapToCycle) ?? options.tapToCycle
+            options.holdAction = try container.decodeIfPresent(String.self, forKey: .holdOpens)
+                .flatMap(BatteryOptions.HoldAction.init(rawValue:)) ?? .details
+            options.panel.closeSide = try container.decodeIfPresent(Align.self, forKey: .panelCloseSide)
+            if let tiles = try container.decodeIfPresent([String].self, forKey: .panelTiles) {
+                options.panel.tiles = Set(tiles.compactMap(BatteryPanelOptions.Tile.init(rawValue:)))
+            }
+            if let hours = try container.decodeIfPresent(Int.self, forKey: .panelGraphHours), (1 ... 48).contains(hours) {
+                options.panel.graphHours = hours
+            }
+            if let minutes = try container.decodeIfPresent(Int.self, forKey: .panelBarMinutes), (5 ... 240).contains(minutes) {
+                options.panel.barMinutes = minutes
+            }
             self = .battery(options: options)
             
         case .cpu:

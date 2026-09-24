@@ -8,11 +8,15 @@
 //  Stripe: a drawn battery icon whose fill tracks the charge (green while
 //  charging, yellow in Low Power Mode, red when low, with a sweep animation
 //  while charging), plus optional percentage and time remaining. Tapping can
-//  switch to time remaining and back; holding opens Battery settings.
+//  switch to time remaining and back; holding opens the battery panel across the
+//  bar (BatteryPanel.swift), Battery settings ("holdOpens": "settings"), or
+//  nothing ("holdOpens": "nothing").
 //
 //    { "type": "battery", "showIcon": true, "showPercentage": true,
 //      "percentInside": false, "showTime": false, "animate": true,
-//      "lowThreshold": 20, "tapToCycle": true }
+//      "lowThreshold": 20, "tapToCycle": true, "holdOpens": "details",
+//      "panelTiles": ["charge", "graph", "power", "since", "apps"],
+//      "panelGraphHours": 12, "panelBarMinutes": 30, "panelCloseSide": "right" }
 //
 
 import Cocoa
@@ -27,11 +31,19 @@ struct BatteryOptions {
     var animate = true
     var lowThreshold = 20
     var tapToCycle = true
+    enum HoldAction: String {
+        case details, settings, nothing
+    }
+
+    var holdAction = HoldAction.details
+    var panel = BatteryPanelOptions()
 }
 
 class BatteryBarItem: CustomButtonTouchBarItem, TearDownable {
     private let batteryInfo = BatteryInfo()
     private let options: BatteryOptions
+    /// What holding opens, for the debug hook to open the same thing.
+    var panelOptions: BatteryPanelOptions { options.panel }
 
     /// Whether a tap has switched to time remaining; otherwise shows what the options say.
     private var showingTimeLeft = false
@@ -46,9 +58,18 @@ class BatteryBarItem: CustomButtonTouchBarItem, TearDownable {
         if options.tapToCycle {
             actions.append(ItemAction(trigger: .singleTap) { [weak self] in self?.cycle() })
         }
-        actions.append(ItemAction(trigger: .longTap) {
-            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Battery-Settings.extension")!)
-        })
+        switch options.holdAction {
+        case .details:
+            let panel = options.panel
+            actions.append(ItemAction(trigger: .longTap) { BatteryPanel.shared.open(options: panel) })
+            BatteryHistory.shared.start() // so the panel's graph has something to show
+        case .settings:
+            actions.append(ItemAction(trigger: .longTap) {
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Battery-Settings.extension")!)
+            })
+        case .nothing:
+            break
+        }
 
         batteryInfo.start { [weak self] in
             self?.refresh()

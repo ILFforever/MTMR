@@ -16,13 +16,13 @@ struct ItemInspector: View {
     /// form every time the window redraws (e.g. on each reorder during a drag).
     let session: EditorSession
 
-    @AppStorage("inspector.layout") private var layoutOpen = true
     @AppStorage("inspector.appearance") private var appearanceOpen = true
     @AppStorage("inspector.content") private var contentOpen = true
     @AppStorage("inspector.items") private var itemsOpen = true
     @AppStorage("inspector.actions") private var actionsOpen = true
     @AppStorage("inspector.visibility") private var visibilityOpen = false
     @AppStorage("inspector.json") private var jsonOpen = false
+    @AppStorage("inspector.batteryPanel") private var batteryPanelOpen = true
 
     var body: some View {
         ScrollView {
@@ -30,45 +30,18 @@ struct ItemInspector: View {
                 header
                     .padding(.bottom, 4)
 
-                if item.info.isVisibleOnBar {
-                    InspectorSection(title: "Layout", symbol: "rectangle.split.3x1", isExpanded: $layoutOpen) {
-                        if isTopLevel {
-                            FieldRow(label: "Position") {
-                                Picker("", selection: Binding(get: { item.align }, set: { item.align = $0 })) {
-                                    Text("Left").tag("left")
-                                    Text("Center").tag("center")
-                                    Text("Right").tag("right")
-                                }
-                                .pickerStyle(.segmented)
-                                .labelsHidden()
-                                .fixedSize()
-                            }
+                // The item's own settings come first; they're what it's for.
+                if !item.info.fields.isEmpty {
+                    InspectorSection(title: item.info.name, symbol: item.info.symbol, isExpanded: $contentOpen) {
+                        ForEach(item.info.fields) { field in
+                            fieldView(field)
                         }
-                        if item.info.supportsIcon && !item.info.fields.contains(where: { $0.path == "title" }) {
-                            TextFieldRow(label: "Title", placeholder: "None", text: string("title"))
-                        }
-                        NumberFieldRow(label: "Width", placeholder: "Automatic", help: "In points; the bar is about 1000 wide",
-                                       value: number("width"))
                     }
                 }
 
-                if item.info.supportsIcon {
-                    InspectorSection(title: "Appearance", symbol: "paintpalette", isExpanded: $appearanceOpen) {
-                        SymbolRow(label: "Icon", value: string("symbol"))
-                        if item.info.supportsButtonStyling {
-                            ColorRow(label: "Icon color", value: string("iconColor"), suggested: "#FFFFFF")
-                            BackgroundRow(item: item)
-                            if item[string: "background"] != nil {
-                                ShapeRow(item: item)
-                            }
-                            NumberFieldRow(label: "Font size", placeholder: "15", value: number("fontSize"))
-                            ChoiceRow(label: "Font weight",
-                                      options: ["ultralight", "thin", "light", "regular", "medium", "semibold", "bold", "heavy", "black"],
-                                      value: string("fontWeight"))
-                            ColorRow(label: "Text color", value: string("textColor"), suggested: "#FFFFFF")
-                            ToggleRow(label: "Fixed-width digits", help: "Keeps changing numbers from shifting",
-                                      defaultValue: false, value: bool("monospacedDigits"))
-                        }
+                if item.type == "battery" {
+                    InspectorSection(title: "Battery Overview", symbol: "rectangle.split.3x1", isExpanded: $batteryPanelOpen) {
+                        BatteryPanelSection(item: item, preview: BatteryPanelPreviewModel.shared)
                     }
                 }
 
@@ -78,11 +51,39 @@ struct ItemInspector: View {
                     }
                 }
 
-                if !item.info.fields.isEmpty {
-                    InspectorSection(title: item.info.name, symbol: item.info.symbol, isExpanded: $contentOpen) {
-                        ForEach(item.info.fields) { field in
-                            fieldView(field)
+                if item.info.isVisibleOnBar {
+                    InspectorSection(title: "Appearance", symbol: "paintpalette", isExpanded: $appearanceOpen) {
+                        if item.info.supportsIcon && !item.info.fields.contains(where: { $0.path == "title" }) {
+                            TextFieldRow(label: "Title", placeholder: "None", text: string("title"))
                         }
+                        if item.info.supportsIcon {
+                            SymbolRow(label: "Icon", value: string("symbol"))
+                        }
+                        if item.info.supportsButtonStyling {
+                            ColorRow(label: "Icon color", value: string("iconColor"), suggested: "#FFFFFF")
+                        }
+                        if item.info.supportsBackground {
+                            BackgroundRow(item: item)
+                            if item[string: "background"] != nil {
+                                ShapeRow(item: item)
+                            }
+                        }
+                        if item.info.supportsButtonStyling {
+                            ColorRow(label: "Pressed color", value: string("pressedBackground"), suggested: "#636366")
+                            ColorRow(label: "Active color", value: string("activeBackground"), suggested: "#30D158")
+                            if item[string: "activeBackground"] != nil {
+                                activeRules
+                            }
+                            NumberFieldRow(label: "Font size", placeholder: "15", value: number("fontSize"))
+                            ChoiceRow(label: "Font weight",
+                                      options: ["ultralight", "thin", "light", "regular", "medium", "semibold", "bold", "heavy", "black"],
+                                      value: string("fontWeight"))
+                            ColorRow(label: "Text color", value: string("textColor"), suggested: "#FFFFFF")
+                            ToggleRow(label: "Fixed-width digits", help: "Keeps changing numbers from shifting",
+                                      defaultValue: false, value: bool("monospacedDigits"))
+                        }
+                        NumberFieldRow(label: "Width", placeholder: "Automatic", help: "In points; the bar is about 1000 wide",
+                                       value: number("width"))
                     }
                 }
 
@@ -114,6 +115,26 @@ struct ItemInspector: View {
         }
     }
 
+    /// When the active color shows: toggles know when they're on; other items
+    /// take the same kind of rules as Visibility.
+    @ViewBuilder
+    private var activeRules: some View {
+        if let state = item.info.builtInActiveState {
+            Text("Shows while \(state).")
+                .font(.caption).foregroundColor(.secondary)
+                .padding(.vertical, 6)
+        } else {
+            Text("Shows while all of these are true. Leave them blank and it never shows.")
+                .font(.caption).foregroundColor(.secondary)
+                .padding(.vertical, 6)
+            AppRuleRow(label: "App is", placeholder: "Any app", text: string("activeWhen.app"))
+            TextFieldRow(label: "Time is", placeholder: "Any time", help: "e.g. 09:00-18:00",
+                         text: string("activeWhen.time"))
+            TextFieldRow(label: "Command succeeds", placeholder: "No command", help: "Active while it exits with 0",
+                         text: string("activeWhen.script"))
+        }
+    }
+
     private var header: some View {
         HStack(spacing: 12) {
             // Drawn like a key on the bar.
@@ -126,6 +147,19 @@ struct ItemInspector: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.displayName).font(.title2.weight(.semibold))
                 Text(subtitle).foregroundColor(.secondary)
+            }
+            Spacer()
+            // Where it sits on the bar; also set by dragging it there.
+            if isTopLevel && item.info.isVisibleOnBar {
+                Picker("Position", selection: Binding(get: { item.align }, set: { item.align = $0 })) {
+                    Text("Left").tag("left")
+                    Text("Center").tag("center")
+                    Text("Right").tag("right")
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .help("Position on the bar. You can also drag the item there.")
             }
         }
     }

@@ -12,7 +12,10 @@
 //  Commands: "popover" (expand the first popover), "group" (open the first group),
 //  "dismiss" (return to the main bar), "settings" (open the editor window),
 //  "select N" (select the Nth top-level item in the editor), "tap NAME" (tap the
-//  first item whose identifier contains NAME, e.g. "tap battery").
+//  first item whose identifier contains NAME, e.g. "tap battery"), "press NAME"
+//  (hold down the first button whose identifier or title contains NAME, to see
+//  its pressed color), "release" (let go of every held button), "battery" (open
+//  the battery panel; "battery left" puts its back chevron on the left).
 //
 
 import Cocoa
@@ -56,6 +59,22 @@ enum DebugHooks {
             let match = TouchBarController.shared.items
                 .first { $0.key.rawValue.lowercased().contains(name) }?.value as? CustomButtonTouchBarItem
             match?.callActions(for: .singleTap)
+        case let press where press.hasPrefix("press "):
+            let name = press.dropFirst(6).lowercased()
+            let match = TouchBarController.shared.items.first { identifier, item in
+                identifier.rawValue.lowercased().contains(name)
+                    || ((item as? CustomButtonTouchBarItem)?.title.lowercased().contains(name) ?? false)
+            }?.value as? CustomButtonTouchBarItem
+            match?.isPressed = true
+        case "release":
+            for case let item as CustomButtonTouchBarItem in items {
+                item.isPressed = false
+            }
+        case "battery", "battery left":
+            // With the battery item's own settings when it's on the bar.
+            var options = (items.first { $0 is BatteryBarItem } as? BatteryBarItem)?.panelOptions ?? BatteryPanelOptions()
+            if command == "battery left" { options.closeSide = .left }
+            BatteryPanel.shared.open(options: options)
         case "dismiss":
             for case let item as PopoverBarItem in items {
                 item.collapse()
