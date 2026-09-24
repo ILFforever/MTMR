@@ -274,7 +274,7 @@ enum ItemType: Decodable {
     case inputsource
     case music(interval: Double, disableMarquee: Bool)
     case group(items: [BarItemDefinition])
-    case popover(items: [BarItemDefinition], pressAndHold: Bool, autoClose: Double?)
+    case popover(items: [BarItemDefinition], pressAndHold: Bool, autoClose: Double?, liveIcon: Bool)
     case nightShift
     case dnd
     case pomodoro(workTime: Double, restTime: Double)
@@ -316,6 +316,7 @@ enum ItemType: Decodable {
         case maxToShow
         case pressAndHold
         case autoClose
+        case liveIcon
         case showIcon, showPercentage, percentInside, showTime, animate, lowThreshold, tapToCycle
     }
 
@@ -431,7 +432,8 @@ enum ItemType: Decodable {
             let items = try container.decode([BarItemDefinition].self, forKey: .items)
             let pressAndHold = try container.decodeIfPresent(Bool.self, forKey: .pressAndHold) ?? false
             let autoClose = try container.decodeIfPresent(Double.self, forKey: .autoClose)
-            self = .popover(items: items, pressAndHold: pressAndHold, autoClose: autoClose)
+            let liveIcon = try container.decodeIfPresent(Bool.self, forKey: .liveIcon) ?? true
+            self = .popover(items: items, pressAndHold: pressAndHold, autoClose: autoClose, liveIcon: liveIcon)
 
         case .nightShift:
             self = .nightShift

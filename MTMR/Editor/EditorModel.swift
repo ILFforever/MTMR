@@ -485,6 +485,7 @@ enum ItemCatalog {
         ItemTypeInfo(type: "popover", name: "Popover", symbol: "rectangle.expand.vertical", category: "Containers",
                      defaults: ["symbol": .string("speaker.wave.2.fill"), "pressAndHold": .bool(true)],
                      fields: [FieldSpec(path: "pressAndHold", label: "Press and hold to slide", kind: .toggle(default: false)),
+                              FieldSpec(path: "liveIcon", label: "Icon shows the volume level", kind: .toggle(default: true)),
                               FieldSpec(path: "autoClose", label: "Auto-close after (s)", kind: .number(placeholder: "never"))]),
         ItemTypeInfo(type: "group", name: "Group", symbol: "folder", category: "Containers",
                      defaults: ["symbol": .string("folder.fill")], fields: []),

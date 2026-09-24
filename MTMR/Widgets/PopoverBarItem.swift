@@ -11,8 +11,9 @@
 //      "type": "popover", "symbol": "speaker.wave.2.fill",
 //      "items": [ { "type": "volume" }, { "type": "mute" } ],
 //      "pressAndHold": true,   // hold + slide adjusts the first item
-//      "autoClose": 4          // seconds of inactivity before collapsing (optional)
-//    }
+//      "autoClose": 4,         // seconds of inactivity before collapsing (optional)
+//      "liveIcon": true        // with a volume slider first: the icon shows the
+//    }                         // current level (0–3 waves, or a slash when muted)
 //
 //  The expanded controls open on the same side as the button (a right-aligned
 //  button expands at the right, with ✕ at the far right where the finger already
@@ -34,6 +35,7 @@ protocol SlidableItem: AnyObject {
 class PopoverBarItem: CustomButtonTouchBarItem, NSTouchBarDelegate, TearDownable {
     private let autoClose: TimeInterval?
     private let align: Align
+    private var audioObserver: AudioOutputObserver?
     private let expandedIdentifier = NSTouchBarItem.Identifier("com.ilfforever.stripe.popover.expanded." + UUID().uuidString)
     private var childIdentifiers: [NSTouchBarItem.Identifier] = []
     private var childDefinitions: [NSTouchBarItem.Identifier: BarItemDefinition] = [:]
@@ -41,7 +43,8 @@ class PopoverBarItem: CustomButtonTouchBarItem, NSTouchBarDelegate, TearDownable
     private let closeIdentifier = NSTouchBarItem.Identifier("com.ilfforever.stripe.popover.close." + UUID().uuidString)
     private var autoCloseTimer: Timer?
 
-    init(identifier: NSTouchBarItem.Identifier, items: [BarItemDefinition], pressAndHold: Bool, autoClose: TimeInterval?, align: Align) {
+    init(identifier: NSTouchBarItem.Identifier, items: [BarItemDefinition], pressAndHold: Bool, autoClose: TimeInterval?,
+         align: Align, liveIcon: Bool) {
         self.autoClose = autoClose
         self.align = align
         super.init(identifier: identifier, title: "")
@@ -53,6 +56,11 @@ class PopoverBarItem: CustomButtonTouchBarItem, NSTouchBarDelegate, TearDownable
         }
 
         actions.append(ItemAction(trigger: .singleTap) { [weak self] in self?.expand() })
+
+        // A volume popover's icon follows the actual volume, like the Control Strip's.
+        if liveIcon, case .volume? = items.first?.type {
+            audioObserver = AudioOutputObserver { [weak self] in self?.updateLiveIcon() }
+        }
 
         if pressAndHold {
             let slide = HoldSlideGestureRecognizer(target: self, action: #selector(handleHoldSlide(_:)))
@@ -67,7 +75,22 @@ class PopoverBarItem: CustomButtonTouchBarItem, NSTouchBarDelegate, TearDownable
         fatalError("init(coder:) has not been implemented")
     }
 
+    override var style: ItemStyle {
+        didSet { updateLiveIcon() } // keep the live icon when the preset's style is applied
+    }
+
+    private func updateLiveIcon() {
+        guard let observer = audioObserver else { return }
+        var live = style
+        live.symbol = observer.speakerSymbol
+        if let icon = live.symbolImage {
+            image = icon
+        }
+    }
+
     func tearDown() {
+        audioObserver?.stop()
+        audioObserver = nil
         autoCloseTimer?.invalidate()
         tearDownItems(childItems.values)
         childItems = [:]

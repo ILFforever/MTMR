@@ -425,8 +425,9 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             barItem = MusicBarItem(identifier: identifier, interval: interval, disableMarquee: disableMarquee)
         case let .group(items: items):
             barItem = GroupBarItem(identifier: identifier, items: items)
-        case let .popover(items: items, pressAndHold: pressAndHold, autoClose: autoClose):
-            barItem = PopoverBarItem(identifier: identifier, items: items, pressAndHold: pressAndHold, autoClose: autoClose, align: item.align)
+        case let .popover(items: items, pressAndHold: pressAndHold, autoClose: autoClose, liveIcon: liveIcon):
+            barItem = PopoverBarItem(identifier: identifier, items: items, pressAndHold: pressAndHold, autoClose: autoClose,
+                                     align: item.align, liveIcon: liveIcon)
         case .nightShift:
             barItem = NightShiftBarItem(identifier: identifier)
         case .dnd:
