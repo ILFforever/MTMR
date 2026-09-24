@@ -8,7 +8,7 @@
 
 import Foundation
 
-class NightShiftBarItem: CustomButtonTouchBarItem {
+class NightShiftBarItem: CustomButtonTouchBarItem, TearDownable {
     private let nsclient = CBBlueLightClient()
     private var timer: Timer!
 
@@ -49,5 +49,9 @@ class NightShiftBarItem: CustomButtonTouchBarItem {
 
     @objc func refresh() {
         image = isNightShiftEnabled ? #imageLiteral(resourceName: "nightShiftOn") : #imageLiteral(resourceName: "nightShiftOff")
+    }
+
+    func tearDown() {
+        timer?.invalidate()
     }
 }

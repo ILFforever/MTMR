@@ -1,6 +1,6 @@
 import Cocoa
 
-class TimeTouchBarItem: CustomButtonTouchBarItem {
+class TimeTouchBarItem: CustomButtonTouchBarItem, TearDownable {
     private let dateFormatter = DateFormatter()
     private var timer: Timer!
 
@@ -24,5 +24,9 @@ class TimeTouchBarItem: CustomButtonTouchBarItem {
 
     @objc func updateTime() {
         title = dateFormatter.string(from: Date())
+    }
+
+    func tearDown() {
+        timer?.invalidate()
     }
 }

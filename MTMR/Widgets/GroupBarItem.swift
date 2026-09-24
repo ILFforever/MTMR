@@ -7,7 +7,7 @@
 //
 import Cocoa
 
-class GroupBarItem: NSPopoverTouchBarItem, NSTouchBarDelegate {
+class GroupBarItem: NSPopoverTouchBarItem, NSTouchBarDelegate, TearDownable {
     var jsonItems: [BarItemDefinition]
 
     var itemDefinitions: [NSTouchBarItem.Identifier: BarItemDefinition] = [:]
@@ -31,7 +31,13 @@ class GroupBarItem: NSPopoverTouchBarItem, NSTouchBarDelegate {
 
     deinit {}
 
+    func tearDown() {
+        tearDownItems(items.values)
+        items = [:]
+    }
+
     @objc override func showPopover(_: Any?) {
+        tearDown()
         itemDefinitions = [:]
         items = [:]
         leftIdentifiers = []

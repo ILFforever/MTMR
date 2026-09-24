@@ -153,7 +153,11 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         leftIdentifiers = []
         centerIdentifiers = []
         rightIdentifiers = []
+        tearDownItems(items.values)
+        tearDownItems(swipeItems)
         items = [:]
+        swipeItems = []
+        visibleIdentifiers = nil
         ConditionMonitor.shared.reset()
 
         loadItemDefinitions(jsonItems: jsonItems)
@@ -161,41 +165,20 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         updateActiveApp()
     }
     
-    func didItemsChange(prevItems: [NSTouchBarItem.Identifier: NSTouchBarItem], prevSwipeItems: [SwipeItem]) -> Bool {
-        var changed = items.count != prevItems.count || swipeItems.count != prevSwipeItems.count
-        
-        if !changed {
-            for (item, prevItem) in zip(items, prevItems) {
-                if item.key != prevItem.key {
-                    changed = true
-                    break
-                }
-            }
-        }
+    /// The items currently built and shown; nil forces a rebuild.
+    private var visibleIdentifiers: Set<NSTouchBarItem.Identifier>?
 
-        if !changed {
-            for (swipeItem, prevSwipeItem) in zip(swipeItems, prevSwipeItems) {
-                if !swipeItem.isEqual(prevSwipeItem) {
-                    changed = true
-                    break
-                }
-            }
-        }
-
-        return changed
-    }
-    
     func prepareTouchBar() {
-        let prevItems = items
-        let prevSwipeItems = swipeItems
-
-        createItems()
-
-        let changed = didItemsChange(prevItems: prevItems, prevSwipeItems: prevSwipeItems)
-
-        if !changed {
+        // Rebuild only when the set of visible items changes (e.g. an app switch
+        // that toggles a "when" condition), and stop the items being replaced.
+        let visible = Set(itemDefinitions.filter { isVisible($0.value) }.keys)
+        if visible == visibleIdentifiers {
             return
         }
+        tearDownItems(items.values)
+        tearDownItems(swipeItems)
+        visibleIdentifiers = visible
+        createItems(visible)
         
         let centerItems = centerIdentifiers.compactMap({ (identifier) -> NSTouchBarItem? in
             items[identifier]
@@ -310,12 +293,12 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         }
     }
 
-    func createItems() {
+    func createItems(_ visible: Set<NSTouchBarItem.Identifier>) {
         items = [:]
         swipeItems = []
 
         for (identifier, definition) in itemDefinitions {
-            if isVisible(definition) {
+            if visible.contains(identifier) {
                 let item = createItem(forIdentifier: identifier, definition: definition)
                 if item is SwipeItem {
                     swipeItems.append(item as! SwipeItem)

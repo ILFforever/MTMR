@@ -8,7 +8,17 @@
 
 import Foundation
 
-class NetworkBarItem: CustomButtonTouchBarItem, Widget {
+class NetworkBarItem: CustomButtonTouchBarItem, Widget, TearDownable {
+    private var bandwidthProcess: Process?
+    private var dataObserver: NSObjectProtocol?
+
+    func tearDown() {
+        if let observer = dataObserver { NotificationCenter.default.removeObserver(observer) }
+        dataObserver = nil
+        bandwidthProcess?.terminate()
+        bandwidthProcess = nil
+    }
+
     static var name: String = "network"
     static var identifier: String = "com.toxblh.mtmr.network"
     
@@ -29,7 +39,6 @@ class NetworkBarItem: CustomButtonTouchBarItem, Widget {
     func startMonitoringProcess() {
         var pipe: Pipe
         var outputHandle: FileHandle
-        var bandwidthProcess: Process?
         var dSpeed: UInt64?
         var uSpeed: UInt64?
         var curr: Array<Substring>?
@@ -48,7 +57,8 @@ class NetworkBarItem: CustomButtonTouchBarItem, Widget {
             forName: NSNotification.Name.NSFileHandleDataAvailable,
             object: outputHandle,
             queue: nil
-        ) { _ -> Void in
+        ) { [weak self] _ -> Void in
+            guard let self = self else { return }
             let data = pipe.fileHandleForReading.availableData
             if data.count > 0 {
                 if let str = NSString(data: data, encoding: String.Encoding.utf8.rawValue) {
@@ -83,6 +93,7 @@ class NetworkBarItem: CustomButtonTouchBarItem, Widget {
             }
         }
 
+        dataObserver = dataAvailable
         bandwidthProcess?.launch()
     }
 

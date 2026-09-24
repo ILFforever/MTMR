@@ -3,7 +3,24 @@ import AVFoundation
 import Cocoa
 import CoreAudio
 
-class VolumeViewController: NSCustomTouchBarItem, SlidableItem {
+class VolumeViewController: NSCustomTouchBarItem, SlidableItem, TearDownable {
+    // Stored so tearDown() can remove exactly these blocks; they hold the item weakly.
+    private lazy var routeListener: AudioObjectPropertyListenerBlock = { [weak self] count, addresses in
+        self?.audioRouteChanged(numberAddresses: count, addresses: addresses)
+    }
+    private lazy var volumeListener: AudioObjectPropertyListenerBlock = { [weak self] count, addresses in
+        self?.audioObjectPropertyListenerBlock(numberAddresses: count, addresses: addresses)
+    }
+
+    func tearDown() {
+        removeLastAudioVolumeChangeListener()
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMaster)
+        AudioObjectRemovePropertyListenerBlock(AudioObjectID(bitPattern: kAudioObjectSystemObject), &address, nil, routeListener)
+    }
+
     private(set) var sliderItem: CustomSlider!
     private var currentDeviceId: AudioObjectID = AudioObjectID(0)
 
@@ -34,7 +51,7 @@ class VolumeViewController: NSCustomTouchBarItem, SlidableItem {
             mSelector: kAudioHardwarePropertyDefaultOutputDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMaster)
-        AudioObjectAddPropertyListenerBlock(audioId, &forPropertyAddress, nil, audioRouteChanged)
+        AudioObjectAddPropertyListenerBlock(audioId, &forPropertyAddress, nil, routeListener)
     }
     
 
@@ -54,7 +71,7 @@ class VolumeViewController: NSCustomTouchBarItem, SlidableItem {
             mElement: kAudioObjectPropertyElementMaster
         )
 
-        AudioObjectAddPropertyListenerBlock(defaultDeviceID, &forPropertyAddress, nil, audioObjectPropertyListenerBlock)
+        AudioObjectAddPropertyListenerBlock(defaultDeviceID, &forPropertyAddress, nil, volumeListener)
     }
     
     private func removeLastAudioVolumeChangeListener() {
@@ -64,7 +81,7 @@ class VolumeViewController: NSCustomTouchBarItem, SlidableItem {
             mElement: kAudioObjectPropertyElementMaster
         )
 
-        AudioObjectRemovePropertyListenerBlock(currentDeviceId, &forPropertyAddress, nil, audioObjectPropertyListenerBlock)
+        AudioObjectRemovePropertyListenerBlock(currentDeviceId, &forPropertyAddress, nil, volumeListener)
     }
 
     func audioObjectPropertyListenerBlock(numberAddresses _: UInt32, addresses _: UnsafePointer<AudioObjectPropertyAddress>) {

@@ -1,10 +1,14 @@
 import Foundation
 
-class DarkModeBarItem: CustomButtonTouchBarItem, Widget {
+class DarkModeBarItem: CustomButtonTouchBarItem, Widget, TearDownable {
     static var name: String = "darkmode"
     static var identifier: String = "com.toxblh.mtmr.darkmode"
 
     private var timer: Timer!
+
+    func tearDown() {
+        timer?.invalidate()
+    }
 
     init(identifier: NSTouchBarItem.Identifier) {
         super.init(identifier: identifier, title: "")
@@ -54,4 +58,3 @@ struct DarkMode {
 func runAppleScript(_ source: String) -> String? {
     return NSAppleScript(source: source)?.executeAndReturnError(nil).stringValue
 }
-

@@ -31,7 +31,7 @@ protocol SlidableItem: AnyObject {
     var sliderValue: Double { get set }
 }
 
-class PopoverBarItem: CustomButtonTouchBarItem, NSTouchBarDelegate {
+class PopoverBarItem: CustomButtonTouchBarItem, NSTouchBarDelegate, TearDownable {
     private let autoClose: TimeInterval?
     private let align: Align
     private let expandedIdentifier = NSTouchBarItem.Identifier("com.ilfforever.stripe.popover.expanded." + UUID().uuidString)
@@ -65,6 +65,12 @@ class PopoverBarItem: CustomButtonTouchBarItem, NSTouchBarDelegate {
 
     required init?(coder _: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    func tearDown() {
+        autoCloseTimer?.invalidate()
+        tearDownItems(childItems.values)
+        childItems = [:]
     }
 
     // MARK: Expand / collapse

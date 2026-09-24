@@ -8,8 +8,12 @@
 
 import Foundation
 
-class DnDBarItem: CustomButtonTouchBarItem {
+class DnDBarItem: CustomButtonTouchBarItem, TearDownable {
     private var timer: Timer!
+
+    func tearDown() {
+        timer?.invalidate()
+    }
 
     init(identifier: NSTouchBarItem.Identifier) {
         super.init(identifier: identifier, title: "")

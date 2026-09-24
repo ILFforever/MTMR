@@ -11,7 +11,7 @@
 import Cocoa
 import CoreAudio
 
-class MuteBarItem: CustomButtonTouchBarItem {
+class MuteBarItem: CustomButtonTouchBarItem, TearDownable {
     private var device = AudioObjectID(0)
     private lazy var muteListener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
         DispatchQueue.main.async { self?.refresh() }
@@ -33,7 +33,7 @@ class MuteBarItem: CustomButtonTouchBarItem {
         fatalError("init(coder:) has not been implemented")
     }
 
-    deinit {
+    func tearDown() {
         var defaultDevice = MuteBarItem.address(kAudioHardwarePropertyDefaultOutputDevice, scope: kAudioObjectPropertyScopeGlobal)
         AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &defaultDevice, .main, deviceListener)
         var mute = MuteBarItem.address(kAudioDevicePropertyMute)

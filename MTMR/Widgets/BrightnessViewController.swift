@@ -3,7 +3,9 @@ import AVFoundation
 import Cocoa
 import CoreAudio
 
-class BrightnessViewController: NSCustomTouchBarItem, SlidableItem {
+class BrightnessViewController: NSCustomTouchBarItem, SlidableItem, TearDownable {
+    private var timer: Timer?
+
     private(set) var sliderItem: CustomSlider!
 
     init(identifier: NSTouchBarItem.Identifier, refreshInterval: Double, image: NSImage? = nil) {
@@ -24,10 +26,15 @@ class BrightnessViewController: NSCustomTouchBarItem, SlidableItem {
 
         let timer = Timer.scheduledTimer(timeInterval: refreshInterval, target: self, selector: #selector(BrightnessViewController.updateBrightnessSlider), userInfo: nil, repeats: true)
         RunLoop.current.add(timer, forMode: RunLoop.Mode.common)
+        self.timer = timer
     }
 
     required init?(coder _: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    func tearDown() {
+        timer?.invalidate()
     }
 
     deinit {
