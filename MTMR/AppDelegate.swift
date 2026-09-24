@@ -7,7 +7,6 @@
 //
 
 import Cocoa
-import Sparkle
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -16,11 +15,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var fileSystemSource: DispatchSourceFileSystemObject?
 
     func applicationDidFinishLaunching(_: Notification) {
-        // Configure Sparkle
-        SUUpdater.shared().automaticallyDownloadsUpdates = false
-        SUUpdater.shared().automaticallyChecksForUpdates = true
-        SUUpdater.shared().checkForUpdatesInBackground()
-
         AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeRetainedValue() as NSString: true] as NSDictionary)
 
         TouchBarController.shared.setupControlStripPresence()
@@ -50,10 +44,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func openPreferences(_: Any?) {
         let task = Process()
-        let appSupportDirectory = NSSearchPathForDirectoriesInDomains(.applicationSupportDirectory, .userDomainMask, true).first!.appending("/MTMR")
-        let presetPath = appSupportDirectory.appending("/items.json")
         task.launchPath = "/usr/bin/open"
-        task.arguments = [presetPath]
+        task.arguments = [standardConfigPath]
         task.launch()
     }
 
@@ -98,7 +90,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         dialog.canCreateDirectories = false
         dialog.allowsMultipleSelection = false
         dialog.allowedFileTypes = ["json"]
-        dialog.directoryURL = NSURL.fileURL(withPath: NSSearchPathForDirectoriesInDomains(.applicationSupportDirectory, .userDomainMask, true).first!.appending("/MTMR"), isDirectory: true)
+        dialog.directoryURL = NSURL.fileURL(withPath: appSupportDirectory, isDirectory: true)
 
         if dialog.runModal() == .OK, let path = dialog.url?.path {
             TouchBarController.shared.reloadPreset(path: path)
@@ -133,7 +125,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(withTitle: "Preferences", action: #selector(openPreferences(_:)), keyEquivalent: ",")
         menu.addItem(withTitle: "Open preset", action: #selector(openPreset(_:)), keyEquivalent: "O")
-        menu.addItem(withTitle: "Check for Updates...", action: #selector(SUUpdater.checkForUpdates(_:)), keyEquivalent: "").target = SUUpdater.shared()
 
         menu.addItem(NSMenuItem.separator())
         menu.addItem(settingSeparator)

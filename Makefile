@@ -1,13 +1,13 @@
-# Builds MTMR.app with only the Xcode Command Line Tools (no Xcode needed).
+# Builds Stripe.app with only the Xcode Command Line Tools (no Xcode needed).
 #
-#   make            build build/MTMR.app for this Mac's architecture
+#   make            build build/Stripe.app for this Mac's architecture
 #   make universal  build an arm64 + x86_64 app
 #   make run        build, then (re)launch it
-#   make install    copy to /Applications (replacing any existing MTMR.app)
+#   make install    copy to /Applications (replacing any existing copy)
 #   make clean
 
-APP_NAME    := MTMR
-BUNDLE_ID   ?= Toxblh.MTMR
+APP_NAME    := Stripe
+BUNDLE_ID   ?= com.ilfforever.stripe
 MIN_MACOS   := 11.0
 ARCHS       ?= $(shell uname -m)
 
@@ -23,8 +23,8 @@ SWIFT_SRCS  := $(shell find $(SRC) -name '*.swift')
 C_SRCS      := $(wildcard $(SRC)/CBridge/*.m $(SRC)/CBridge/*.c)
 ASSETS      := $(SRC)/Assets.xcassets
 
-FW_FLAGS    := -F . -F build-support/Frameworks -F $(SDK)/System/Library/PrivateFrameworks
-FRAMEWORKS  := -framework Sparkle -framework DFRFoundation -framework MultitouchSupport \
+FW_FLAGS    := -F build-support/Frameworks -F $(SDK)/System/Library/PrivateFrameworks
+FRAMEWORKS  := -framework DFRFoundation -framework MultitouchSupport \
                -framework CoreBrightness -framework CoreDisplay \
                -framework Cocoa -framework Carbon -framework IOKit -framework ServiceManagement
 
@@ -48,13 +48,12 @@ $(BUILD)/$(APP_NAME): $(SWIFT_SRCS) $(C_SRCS) $(wildcard $(SRC)/CBridge/*.h) Mak
 	  swiftc -target $$target -sdk $(SDK) -O -swift-version 5 \
 	    -module-name $(APP_NAME) -import-objc-header $(BRIDGE_HDR) -I $(SRC)/CBridge \
 	    $(FW_FLAGS) $(FRAMEWORKS) \
-	    -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
 	    $(SWIFT_SRCS) $(OBJ)/$$arch/*.o -o $(OBJ)/$$arch/$(APP_NAME) || exit 1; \
 	done
 	lipo -create $(foreach a,$(ARCHS),$(OBJ)/$(a)/$(APP_NAME)) -output $@
 
 $(APP): $(BUILD)/$(APP_NAME) $(SRC)/Info.plist $(SRC)/MTMR.entitlements
-	@rm -rf $(APP) && mkdir -p $(CONTENTS)/MacOS $(CONTENTS)/Resources $(CONTENTS)/Frameworks
+	@rm -rf $(APP) && mkdir -p $(CONTENTS)/MacOS $(CONTENTS)/Resources
 	cp $(BUILD)/$(APP_NAME) $(CONTENTS)/MacOS/
 	@# Info.plist: substitute the Xcode build-setting variables.
 	sed -e 's/$$(EXECUTABLE_NAME)/$(APP_NAME)/g' -e 's/$$(PRODUCT_NAME)/$(APP_NAME)/g' \
@@ -71,10 +70,9 @@ $(APP): $(BUILD)/$(APP_NAME) $(SRC)/Info.plist $(SRC)/MTMR.entitlements
 	  cp $(ASSETS)/AppIcon.appiconset/logo-$$s.png $$iconset/icon_$${s}x$${s}.png; \
 	  d=$$((s*2)); if [ -f $(ASSETS)/AppIcon.appiconset/logo-$$d.png ]; then cp $(ASSETS)/AppIcon.appiconset/logo-$$d.png $$iconset/icon_$${s}x$${s}@2x.png; fi; \
 	done; iconutil -c icns $$iconset -o $(CONTENTS)/Resources/AppIcon.icns
-	cp $(SRC)/defaultPreset.json $(SRC)/dsa_pub.pem $(CONTENTS)/Resources/
+	cp $(SRC)/defaultPreset.json $(CONTENTS)/Resources/
 	cp -R $(SRC)/AppleScripts/ $(CONTENTS)/Resources/
-	cp -R Sparkle.framework $(CONTENTS)/Frameworks/
-	codesign --force --deep --sign - --entitlements $(SRC)/MTMR.entitlements $(APP)
+	codesign --force --sign - --entitlements $(SRC)/MTMR.entitlements $(APP)
 	@echo "==> built $(APP)"
 
 run: $(APP)

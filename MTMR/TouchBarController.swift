@@ -13,8 +13,10 @@ struct ExactItem {
     let presetItem: BarItemDefinition
 }
 
-let appSupportDirectory = NSSearchPathForDirectoriesInDomains(.applicationSupportDirectory, .userDomainMask, true).first!.appending("/MTMR")
+private let userAppSupport = NSSearchPathForDirectoriesInDomains(.applicationSupportDirectory, .userDomainMask, true).first!
+let appSupportDirectory = userAppSupport.appending("/\(Brand.name)")
 let standardConfigPath = appSupportDirectory.appending("/items.json")
+private let legacyConfigPath = userAppSupport.appending("/\(Brand.legacyName)/items.json")
 
 extension ItemType {
     var identifierBase: String {
@@ -222,10 +224,15 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
 
     func reloadStandardConfig() {
         let presetPath = standardConfigPath
-        if !FileManager.default.fileExists(atPath: presetPath),
-            let defaultPreset = Bundle.main.path(forResource: "defaultPreset", ofType: "json") {
-            try? FileManager.default.createDirectory(atPath: appSupportDirectory, withIntermediateDirectories: true, attributes: nil)
-            try? FileManager.default.copyItem(atPath: defaultPreset, toPath: presetPath)
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: presetPath) {
+            try? fm.createDirectory(atPath: appSupportDirectory, withIntermediateDirectories: true, attributes: nil)
+            // Import an existing MTMR config before falling back to the bundled default.
+            if fm.fileExists(atPath: legacyConfigPath) {
+                try? fm.copyItem(atPath: legacyConfigPath, toPath: presetPath)
+            } else if let defaultPreset = Bundle.main.path(forResource: "defaultPreset", ofType: "json") {
+                try? fm.copyItem(atPath: defaultPreset, toPath: presetPath)
+            }
         }
 
         reloadPreset(path: presetPath)
