@@ -104,6 +104,8 @@ class PopoverBarItem: CustomButtonTouchBarItem, NSTouchBarDelegate {
         let stack = NSStackView(views: views)
         stack.orientation = .horizontal
         stack.spacing = 8
+        // Keep the round ✕ whole where it meets the bar's end.
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 4, bottom: 0, right: 4)
         if align == .center, let first = views.first, let last = views.last {
             first.widthAnchor.constraint(equalTo: last.widthAnchor).isActive = true
         }
@@ -165,9 +167,10 @@ class PopoverBarItem: CustomButtonTouchBarItem, NSTouchBarDelegate {
             if let close = closeItem { return close }
             // A gray rounded key, like the close button on Apple's expanded controls.
             let close = CustomButtonTouchBarItem(identifier: identifier, title: "")
-            close.style = ItemStyle(fontWeight: .semibold, cornerRadius: 8, symbol: "xmark")
+            close.style = ItemStyle(fontSize: 11, fontWeight: .bold, cornerRadius: 15, symbol: "xmark")
             close.backgroundColor = NSColor(white: 1, alpha: 0.2)
-            close.setWidth(value: 64)
+            close.setWidth(value: 30) // with the 30pt bar height and 15pt radius: a circle
+            close.view.heightAnchor.constraint(equalToConstant: 30).isActive = true
             close.actions = [ItemAction(trigger: .singleTap) { [weak self] in self?.collapse() }]
             closeItem = close
             return close

@@ -158,18 +158,14 @@ class SupportedTypesHolder {
             )
         },
 
-        "mute": { _ in
-            let imageParameter = GeneralParameter.image(source: NSImage(named: NSImage.touchBarAudioOutputMuteTemplateName)!)
-            return (
-                item: .staticButton(title: ""),
-                actions: [
-                    Action(trigger: .singleTap, value: .hidKey(keycode: NX_KEYTYPE_MUTE))
-                ],
-                legacyAction: .none,
-                legacyLongAction: .none,
-                parameters: [.image: imageParameter]
-            )
-        },
+        // A real toggle via CoreAudio that shows the mute state (MuteBarItem).
+        "mute": { _ in (
+            item: .mute,
+            actions: [],
+            legacyAction: .none,
+            legacyLongAction: .none,
+            parameters: [:]
+        ) },
 
         "previous": { _ in
             let imageParameter = GeneralParameter.image(source: NSImage(named: NSImage.touchBarRewindTemplateName)!)
@@ -270,6 +266,7 @@ enum ItemType: Decodable {
     case cpu(refreshInterval: Double)
     case dock(autoResize: Bool, filter: String?)
     case volume
+    case mute
     case brightness(refreshInterval: Double)
     case weather(interval: Double, units: String, api_key: String, icon_type: String)
     case yandexWeather(interval: Double)

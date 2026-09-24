@@ -37,6 +37,8 @@ extension ItemType {
             return "com.toxblh.mtmr.dock"
         case .volume:
             return "com.toxblh.mtmr.volume"
+        case .mute:
+            return "com.ilfforever.stripe.mute."
         case .brightness(refreshInterval: _):
             return "com.toxblh.mtmr.brightness"
         case .weather(interval: _, units: _, api_key: _, icon_type: _):
@@ -414,6 +416,8 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             } else {
                 barItem = AppScrubberTouchBarItem(identifier: identifier, autoResize: autoResize)
             }
+        case .mute:
+            barItem = MuteBarItem(identifier: identifier)
         case .volume:
             if case let .image(source)? = item.additionalParameters[.image] {
                 barItem = VolumeViewController(identifier: identifier, image: source.image)
