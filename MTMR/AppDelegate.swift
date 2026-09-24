@@ -9,7 +9,7 @@
 import Cocoa
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength) // the STR mark is wider than square
     var isBlockedApp: Bool = false
 
     private var fileSystemSource: DispatchSourceFileSystemObject?
