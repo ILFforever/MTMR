@@ -120,8 +120,13 @@ extension NSSlider {
         }
         let row = NSStackView(views: [icon(minSymbol), self, icon(maxSymbol)])
         row.orientation = .horizontal
-        row.spacing = 8
-        row.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 8)
+        row.spacing = 10
+        row.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
+        // Sit on a rounded gray panel, like the Control Strip's expanded sliders.
+        row.wantsLayer = true
+        row.layer?.backgroundColor = NSColor(white: 1, alpha: 0.14).cgColor
+        row.layer?.cornerRadius = 8
+        row.heightAnchor.constraint(equalToConstant: 30).isActive = true // full bar height, like the buttons
         return row
     }
 }

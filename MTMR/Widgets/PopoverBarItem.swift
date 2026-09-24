@@ -122,10 +122,11 @@ class PopoverBarItem: CustomButtonTouchBarItem, NSTouchBarDelegate {
 
     func touchBar(_: NSTouchBar, makeItemForIdentifier identifier: NSTouchBarItem.Identifier) -> NSTouchBarItem? {
         if identifier == closeIdentifier {
+            // A gray rounded key, like the close button on Apple's expanded controls.
             let close = CustomButtonTouchBarItem(identifier: identifier, title: "")
-            close.style = ItemStyle(symbol: "xmark")
-            close.isBordered = false
-            close.setWidth(value: 44)
+            close.style = ItemStyle(fontWeight: .semibold, cornerRadius: 8, symbol: "xmark")
+            close.backgroundColor = NSColor(white: 1, alpha: 0.2)
+            close.setWidth(value: 64)
             close.actions = [ItemAction(trigger: .singleTap) { [weak self] in self?.collapse() }]
             return close
         }
