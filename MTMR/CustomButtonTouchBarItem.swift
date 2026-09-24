@@ -77,6 +77,12 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
         }
     }
 
+    /// Extra space on each side of the content, for items whose content would
+    /// otherwise sit tight against the key's edges (e.g. the battery).
+    var contentPadding: CGFloat = 0 {
+        didSet { reinstallButton() }
+    }
+
     var style = ItemStyle() {
         didSet {
             if let symbolImage = style.symbolImage {
@@ -119,7 +125,7 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
         let image = button.image
         let cell = CustomButtonCell(parentItem: self)
         button.cell = cell
-        (button as? CustomHeightButton)?.horizontalPadding = style.cornerRadius != nil ? 10 : 0
+        (button as? CustomHeightButton)?.horizontalPadding = max(style.cornerRadius != nil ? 10 : 0, contentPadding)
         button.wantsLayer = style.cornerRadius != nil
         button.layer?.cornerRadius = style.cornerRadius ?? 0
         button.layer?.backgroundColor = nil

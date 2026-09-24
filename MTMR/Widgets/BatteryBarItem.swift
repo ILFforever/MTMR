@@ -41,6 +41,7 @@ class BatteryBarItem: CustomButtonTouchBarItem, TearDownable {
     init(identifier: NSTouchBarItem.Identifier, options: BatteryOptions) {
         self.options = options
         super.init(identifier: identifier, title: " ")
+        contentPadding = 8 // match the breathing room of the icon keys around it
 
         if options.tapToCycle {
             actions.append(ItemAction(trigger: .singleTap) { [weak self] in self?.cycle() })
