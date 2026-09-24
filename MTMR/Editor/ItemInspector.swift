@@ -24,8 +24,9 @@ struct ItemInspector: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 16) {
                 header
+                    .padding(.bottom, 4)
 
                 if item.info.isVisibleOnBar {
                     InspectorSection(title: "Layout", symbol: "rectangle.split.3x1", isExpanded: $layoutOpen) {
@@ -38,7 +39,7 @@ struct ItemInspector: View {
                                 }
                                 .pickerStyle(.segmented)
                                 .labelsHidden()
-                                .frame(maxWidth: 220)
+                                .fixedSize()
                             }
                         }
                         if item.info.supportsIcon && !item.info.fields.contains(where: { $0.path == "title" }) {
@@ -113,10 +114,13 @@ struct ItemInspector: View {
 
     private var header: some View {
         HStack(spacing: 12) {
+            // Drawn like a key on the bar.
             Image(systemName: item.displaySymbol)
-                .font(.system(size: 22))
+                .font(.system(size: 20))
+                .foregroundColor(.white)
                 .frame(width: 44, height: 44)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Color.accentColor.opacity(0.15)))
+                .background(RoundedRectangle(cornerRadius: EditorStyle.boxRadius).fill(Color(white: 0.16)))
+                .overlay(RoundedRectangle(cornerRadius: EditorStyle.boxRadius).stroke(Color.white.opacity(0.08)))
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.displayName).font(.title2.weight(.semibold))
                 Text(subtitle).foregroundColor(.secondary)
@@ -266,7 +270,8 @@ struct ActionsEditor: View {
             }
         }
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .windowBackgroundColor)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(nsColor: .separatorColor), lineWidth: 0.5))
     }
 
     // MARK: Editing
@@ -486,6 +491,7 @@ struct AppRuleRow: View {
             HStack(spacing: 6) {
                 TextField(placeholder, text: $text)
                     .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: EditorStyle.fieldWidth)
                 Menu {
                     ForEach(PresetLibrary.runningApps(), id: \.bundleId) { app in
                         Button(app.name) { add(app.name) }

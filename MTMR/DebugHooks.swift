@@ -44,6 +44,12 @@ enum DebugHooks {
             if let index = Int(select.dropFirst(7)), editor.document.items.indices.contains(index) {
                 editor.session.selection = editor.document.items[index].id
             }
+        case let pane where pane.hasPrefix("pane "):
+            // "pane outline" or "pane library" switches the editor's left pane.
+            SettingsWindowController.shared.session.leftPane = String(pane.dropFirst(5))
+        case let search where search.hasPrefix("search "):
+            // "search vol" types into the editor's sidebar search.
+            SettingsWindowController.shared.session.search = String(search.dropFirst(7))
         case let tap where tap.hasPrefix("tap "):
             // "tap battery" taps the first item whose identifier contains "battery".
             let name = tap.dropFirst(4).lowercased()

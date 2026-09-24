@@ -282,6 +282,9 @@ final class PresetDocument: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
     }
 
+    /// Edits made in the last half second that the bar hasn't loaded yet.
+    var hasPendingSave: Bool { saveWork.map { !$0.isCancelled } ?? false }
+
     func flushSave() {
         if let work = saveWork, !work.isCancelled {
             work.cancel()

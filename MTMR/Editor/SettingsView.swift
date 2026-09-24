@@ -2,7 +2,7 @@
 //  SettingsView.swift
 //  Stripe
 //
-//  The editor window: a live picture of the Touch Bar on top, the items in a
+//  The editor window: the live, editable Touch Bar on top, the items in a
 //  sidebar grouped by position (groups and popovers expand in place), and the
 //  selected item's settings on the right.
 //
@@ -20,34 +20,29 @@ final class EditorSession: ObservableObject {
     @Published var targetZone: String?
     /// The left pane: the item library ("library") or the outline of items ("outline").
     @Published var leftPane = "library"
+    /// Filters the library tiles or the outline rows.
+    @Published var search = ""
 }
 
 struct SettingsView: View {
     @ObservedObject var document: PresetDocument
     @ObservedObject var session: EditorSession
-    @ObservedObject var preview: TouchBarPreviewModel
+    let snapshots: ItemSnapshotModel
 
     private static let sections = [("left", "Left"), ("center", "Center"), ("right", "Right")]
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 5) {
-                    Circle().fill(Color.green).frame(width: 6, height: 6)
-                    Text("On your Touch Bar").font(.caption.weight(.semibold)).foregroundColor(.secondary)
-                }
-                TouchBarPreviewView(model: preview)
+            VStack(spacing: 0) {
+                header
+                stage
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 10)
-            BarCanvas(document: document, session: session)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+            .background(Color(nsColor: .underPageBackgroundColor))
             Divider()
             HSplitView {
                 leftPane
-                    .frame(minWidth: 260, idealWidth: 320, maxWidth: 440)
+                    .frame(minWidth: 280, idealWidth: 330, maxWidth: 440)
+                    .background(SidebarBackground())
                 detail
                     .frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -57,18 +52,34 @@ struct SettingsView: View {
         .edgesIgnoringSafeArea(.top)
     }
 
+    /// The bar, drawn from live pictures of the real items, and edited in place.
+    private var stage: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            StageCaption(title: "Your Touch Bar", live: true,
+                         hint: "Drag to reorder · drag into the library to remove · click to edit")
+            BarCanvas(document: document, session: session, snapshots: snapshots)
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 14)
+    }
+
     private var leftPane: some View {
         VStack(spacing: 0) {
-            Picker("", selection: $session.leftPane) {
-                Text("Library").tag("library")
-                Text("Outline").tag("outline")
+            HStack(spacing: 8) {
+                SearchField(placeholder: session.leftPane == "library" ? "Search items" : "Search your bar",
+                            text: $session.search)
+                Picker("", selection: $session.leftPane) {
+                    Image(systemName: "square.grid.2x2").help("Library: every item you can add").tag("library")
+                    Image(systemName: "list.bullet").help("Outline: the items on your bar").tag("outline")
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(10)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
             if session.leftPane == "library" {
                 ItemLibrary(document: document, session: session)
-                    .padding([.horizontal, .bottom], 10)
             } else {
                 sidebar
             }
@@ -150,11 +161,15 @@ struct SettingsView: View {
     private var sidebar: some View {
         List(selection: $session.selection) {
             ForEach(SettingsView.sections, id: \.0) { align, title in
-                Section(header: Text(title)) {
-                    ForEach(document.items(aligned: align)) { item in
-                        row(item)
+                let items = document.items(aligned: align).filter(matchesSearch)
+                // While searching, sections with no matches are left out.
+                if session.search.isEmpty || !items.isEmpty {
+                    Section(header: Text(title)) {
+                        ForEach(items) { item in
+                            row(item)
+                        }
+                        .onMove { document.move(inSection: align, from: $0, to: $1) }
                     }
-                    .onMove { document.move(inSection: align, from: $0, to: $1) }
                 }
             }
         }
@@ -162,6 +177,14 @@ struct SettingsView: View {
         .onDeleteCommand {
             if let item = document.find(session.selection) { delete(item) }
         }
+    }
+
+    /// An item matches if its name, type or any of its children's do.
+    private func matchesSearch(_ item: EditorItem) -> Bool {
+        let query = session.search.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return true }
+        return [item.displayName, item.info.name, item.type].contains { $0.localizedCaseInsensitiveContains(query) }
+            || (item.children ?? []).contains(where: matchesSearch)
     }
 
     @ViewBuilder

@@ -60,6 +60,7 @@ enum DragPayload {
 struct BarCanvas: View {
     @ObservedObject var document: PresetDocument
     @ObservedObject var session: EditorSession
+    @ObservedObject var snapshots: ItemSnapshotModel
 
     private static let positions = [("left", "Left"), ("center", "Center"), ("right", "Right")]
 
@@ -81,22 +82,14 @@ struct BarCanvas: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("Your bar").font(.caption.weight(.semibold)).foregroundColor(.secondary)
-                Spacer()
-                Text("Drag to reorder · drag into the library to remove · click to edit")
-                    .font(.caption).foregroundColor(.secondary)
-            }
-            HStack(spacing: 6) {
-                zone("left")
-                zone("center").frame(maxWidth: .infinity)
-                zone("right")
-            }
-            .padding(6)
-            .frame(height: 52)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Color.black))
+        HStack(spacing: 6) {
+            zone("left")
+            zone("center").frame(maxWidth: .infinity)
+            zone("right")
         }
+        .padding(6)
+        .frame(height: 52)
+        .background(RoundedRectangle(cornerRadius: EditorStyle.barRadius).fill(Color.black))
     }
 
     private func zone(_ align: String) -> some View {
@@ -111,7 +104,8 @@ struct BarCanvas: View {
                         .padding(.horizontal, 14)
                 }
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    BarChip(item: item, isSelected: session.selection == item.id)
+                    BarChip(item: item, snapshot: snapshots.images[item.id], isSelected: session.selection == item.id)
+                        .opacity(snapshots.hidden.contains(item.id) ? 0.4 : 1)
                         .onTapGesture { session.selection = item.id }
                         .contextMenu { chipMenu(item) }
                         .onDrag {
@@ -127,16 +121,18 @@ struct BarCanvas: View {
         }
         .frame(minWidth: items.isEmpty ? 70 : nil)
         .background(RoundedRectangle(cornerRadius: 7)
-            .strokeBorder(targeted ? Color.accentColor : Color.gray.opacity(0.35),
+            .strokeBorder(targeted ? Color.accentColor : Color.white.opacity(0.18),
                           style: StrokeStyle(lineWidth: targeted ? 2 : 1, dash: targeted ? [] : [4, 3])))
         .onDrop(of: [.plainText], delegate: ZoneDropDelegate(document: document, session: session, align: align))
         .fixedSize(horizontal: align != "center", vertical: false)
     }
 }
 
-/// An approximation of how the item looks on the bar: icon, label, background.
+/// The item as it looks on the bar: a live snapshot of the real item when there
+/// is one, otherwise an approximation (icon, label, background).
 struct BarChip: View {
     @ObservedObject var item: EditorItem
+    let snapshot: NSImage?
     let isSelected: Bool
 
     private var background: Color? {
@@ -156,6 +152,20 @@ struct BarChip: View {
     }
 
     var body: some View {
+        if let snapshot = snapshot {
+            Image(nsImage: snapshot)
+                .frame(width: snapshot.size.width, height: snapshot.size.height)
+                .overlay(RoundedRectangle(cornerRadius: radius)
+                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+                    .padding(-2))
+                .contentShape(Rectangle())
+                .help(item.displayName)
+        } else {
+            approximation
+        }
+    }
+
+    private var approximation: some View {
         HStack(spacing: 5) {
             Image(systemName: item.displaySymbol)
                 .foregroundColor((item.fields["iconColor"]?.string?.namedOrHexColor).map { Color(nsColor: $0) } ?? .white)
@@ -262,22 +272,24 @@ struct ItemLibrary: View {
 
     var body: some View {
         let targeted = session.targetZone == "library"
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Item Library").font(.headline)
-                Spacer()
-                Label(targeted ? "Release to remove" : "Drag onto the bar to add · drag here to remove",
-                      systemImage: targeted ? "trash" : "hand.draw")
-                    .font(.caption)
-                    .foregroundColor(targeted ? .red : .secondary)
-            }
+        VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    ForEach(ItemCatalog.categories, id: \.self) { category in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(category).font(.caption.weight(.semibold)).foregroundColor(.secondary)
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], spacing: 8) {
-                                ForEach(ItemCatalog.all.filter { $0.category == category }, id: \.type) { info in
+                VStack(alignment: .leading, spacing: 16) {
+                    if matches.isEmpty {
+                        Text("No items match \u{201C}\(session.search)\u{201D}")
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 24)
+                    }
+                    ForEach(ItemCatalog.categories.filter { category in matches.contains { $0.category == category } },
+                            id: \.self) { category in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(category)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.secondary)
+                                .padding(.leading, 2)
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)], spacing: 8) {
+                                ForEach(matches.filter { $0.category == category }, id: \.type) { info in
                                     LibraryTile(info: info)
                                         .onDrag {
                                             session.dragging = .new(type: info.type)
@@ -289,15 +301,31 @@ struct ItemLibrary: View {
                         }
                     }
                 }
-                .padding(.bottom, 8)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
             }
+            Divider()
+            Label(targeted ? "Release to remove" : "Drag onto the bar to add, or double-click",
+                  systemImage: targeted ? "trash" : "hand.draw")
+                .font(.system(size: 11))
+                .foregroundColor(targeted ? .red : .secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
         }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 10)
-            .fill(targeted ? Color.red.opacity(0.08) : Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 10)
-            .stroke(targeted ? Color.red.opacity(0.6) : Color(nsColor: .separatorColor), lineWidth: targeted ? 2 : 0.5))
+        .background(targeted ? Color.red.opacity(0.08) : Color.clear)
+        .overlay(RoundedRectangle(cornerRadius: 6)
+            .strokeBorder(Color.red.opacity(targeted ? 0.6 : 0), lineWidth: 2)
+            .padding(4))
         .onDrop(of: [.plainText], delegate: LibraryDropDelegate(document: document, session: session))
+    }
+
+    /// Item types whose name, type or category contain the search text.
+    private var matches: [ItemTypeInfo] {
+        let query = session.search.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return ItemCatalog.all }
+        return ItemCatalog.all.filter { info in
+            [info.name, info.type, info.category].contains { $0.localizedCaseInsensitiveContains(query) }
+        }
     }
 
     /// Double-clicking a tile adds it to the end of the center section.
@@ -310,21 +338,25 @@ struct ItemLibrary: View {
 
 struct LibraryTile: View {
     let info: ItemTypeInfo
+    private let hovering = State(initialValue: false)
 
     var body: some View {
-        VStack(spacing: 5) {
+        VStack(spacing: 6) {
             Image(systemName: info.symbol)
-                .font(.system(size: 18))
-                .frame(height: 22)
+                .font(.system(size: 17))
+                .frame(height: 20)
             Text(info.name)
-                .font(.caption)
+                .font(.system(size: 11))
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(width: 92, height: 64)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .windowBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(nsColor: .separatorColor), lineWidth: 0.5))
+        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity, minHeight: 66)
+        .background(RoundedRectangle(cornerRadius: 8)
+            .fill(Color.primary.opacity(hovering.wrappedValue ? 0.1 : 0.05)))
         .contentShape(Rectangle())
+        .onHover { hovering.wrappedValue = $0 }
         .help("Drag onto the bar, or double-click to add")
     }
 }

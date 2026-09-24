@@ -85,13 +85,15 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     /// The preset chosen by the user (items.json, or one opened from the menu).
     fileprivate var lastPresetPath = ""
     /// The preset on screen: `lastPresetPath`, or a per-app preset from apps/<bundle-id>.json.
-    private var currentPresetPath = ""
+    private(set) var currentPresetPath = ""
     var jsonItems: [BarItemDefinition] = []
     var itemDefinitions: [NSTouchBarItem.Identifier: BarItemDefinition] = [:]
     var items: [NSTouchBarItem.Identifier: NSTouchBarItem] = [:]
     var leftIdentifiers: [NSTouchBarItem.Identifier] = []
     var centerIdentifiers: [NSTouchBarItem.Identifier] = []
     var rightIdentifiers: [NSTouchBarItem.Identifier] = []
+    /// Every item's identifier in preset order, so the editor can match its items to the bar's.
+    private(set) var orderedIdentifiers: [NSTouchBarItem.Identifier] = []
     var basicViewIdentifier = NSTouchBarItem.Identifier("com.toxblh.mtmr.scrollView.".appending(UUID().uuidString))
     var basicView: BasicView?
     var swipeItems: [SwipeItem] = []
@@ -153,6 +155,7 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         leftIdentifiers = []
         centerIdentifiers = []
         rightIdentifiers = []
+        orderedIdentifiers = []
         tearDownItems(items.values)
         tearDownItems(swipeItems)
         items = [:]
@@ -281,6 +284,7 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             let identifierString = item.type.identifierBase.appending(time + "--" + UUID().uuidString)
             let identifier = NSTouchBarItem.Identifier(identifierString)
             itemDefinitions[identifier] = item
+            orderedIdentifiers.append(identifier)
             if item.align == .left {
                 leftIdentifiers.append(identifier)
             }

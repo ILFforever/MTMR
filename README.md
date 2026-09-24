@@ -8,7 +8,7 @@ Stripe replaces your Touch Bar with a bar you design: buttons, sliders, widgets 
 
 ## What's new compared with MTMR
 
-- **Visual settings editor.** Drag items around a live preview of the bar and edit each one in an inspector. You don't need to touch the JSON.
+- **Visual settings editor.** Drag items around a live picture of your bar and edit each one in an inspector. You don't need to touch the JSON.
 - **Popovers.** A collapsible item such as a volume key opens its controls in place. Press and hold, then slide, to adjust without opening it.
 - **Per-item styling.** SF Symbols, font size and weight, text and icon colors, and rounded "pill" backgrounds.
 - **Conditional items.** Show an item only for certain apps, at certain times of day, or while a shell command succeeds.
