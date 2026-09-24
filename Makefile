@@ -60,7 +60,6 @@ $(APP): $(BUILD)/$(APP_NAME) $(SRC)/Info.plist $(SRC)/MTMR.entitlements
 	sed -e 's/$$(EXECUTABLE_NAME)/$(APP_NAME)/g' -e 's/$$(PRODUCT_NAME)/$(APP_NAME)/g' \
 	    -e 's/$$(PRODUCT_BUNDLE_IDENTIFIER)/$(BUNDLE_ID)/g' -e 's/$$(DEVELOPMENT_LANGUAGE)/en/g' \
 	    -e 's/$$(MACOSX_DEPLOYMENT_TARGET)/$(MIN_MACOS)/g' $(SRC)/Info.plist > $(CONTENTS)/Info.plist
-	/usr/libexec/PlistBuddy -c 'Delete :NSMainStoryboardFile' $(CONTENTS)/Info.plist
 	/usr/libexec/PlistBuddy -c 'Set :CFBundleIconFile AppIcon' $(CONTENTS)/Info.plist
 	@# Resources: loose copies of the asset catalog images (no actool), scripts, preset.
 	@for set in $(ASSETS)/*.imageset; do \

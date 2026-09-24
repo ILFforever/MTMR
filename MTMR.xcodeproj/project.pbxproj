@@ -51,6 +51,7 @@
 		B08173272135F02B005D4908 /* NightShiftBarItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08173262135F02B005D4908 /* NightShiftBarItem.swift */; };
 		B081732A2135F354005D4908 /* CoreBrightness.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B08173292135F354005D4908 /* CoreBrightness.framework */; };
 		B081732C213739FE005D4908 /* DnDBarItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B081732B213739FE005D4908 /* DnDBarItem.swift */; };
+		A1B2C3D4E5F6000000000002 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000001 /* main.swift */; };
 		B082B253205C7D8000BC04DC /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B082B252205C7D8000BC04DC /* AppDelegate.swift */; };
 		B082B257205C7D8000BC04DC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B082B256205C7D8000BC04DC /* Assets.xcassets */; };
 		B082B25A205C7D8000BC04DC /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = B082B258205C7D8000BC04DC /* Main.storyboard */; };
@@ -141,6 +142,7 @@
 		B08173292135F354005D4908 /* CoreBrightness.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreBrightness.framework; path = ../../../../../System/Library/PrivateFrameworks/CoreBrightness.framework; sourceTree = "<group>"; };
 		B081732B213739FE005D4908 /* DnDBarItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DnDBarItem.swift; sourceTree = "<group>"; };
 		B082B24F205C7D8000BC04DC /* MTMR.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MTMR.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1B2C3D4E5F6000000000001 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		B082B252205C7D8000BC04DC /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		B082B256205C7D8000BC04DC /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B082B259205C7D8000BC04DC /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
@@ -239,6 +241,7 @@
 				B0679BC0215AE73F000FC6B4 /* dsa_pub.pem */,
 				B082B25C205C7D8000BC04DC /* MTMR.entitlements */,
 				36C2ECDF207CB1B0003CDA33 /* defaultPreset.json */,
+				A1B2C3D4E5F6000000000001 /* main.swift */,
 				B082B252205C7D8000BC04DC /* AppDelegate.swift */,
 				B0A7E9A9205D6AA400EEF070 /* KeyPress.swift */,
 				36FEF871235A1CFC00A0ABCE /* AppSettings.swift */,
@@ -431,7 +434,6 @@
 				5DC6CA02241F92CB005CD5E8 /* Music.nowPlaying.scpt in Resources */,
 				5DC6CA03241F92CB005CD5E8 /* Music.next.scpt in Resources */,
 				B0B17436207D6B590004B740 /* iTunes.next.scpt in Resources */,
-				B082B25A205C7D8000BC04DC /* Main.storyboard in Resources */,
 				B0B17435207D6B590004B740 /* Spotify.next.scpt in Resources */,
 				B0679BC1215AE73F000FC6B4 /* dsa_pub.pem in Resources */,
 				B0B17433207D6B590004B740 /* Finder.scpt in Resources */,
@@ -488,6 +490,7 @@
 				B0008E552080286C003AD4DD /* SupportHelpers.swift in Sources */,
 				6042B6A72083E03A00C525C8 /* AppScrubberTouchBarItem.swift in Sources */,
 				BAF5AB5924317CAF00B04904 /* SwipeItem.swift in Sources */,
+				A1B2C3D4E5F6000000000002 /* main.swift in Sources */,
 				B082B253205C7D8000BC04DC /* AppDelegate.swift in Sources */,
 				B0F54A7A2295AC7D00B4C509 /* DarkModeBarItem.swift in Sources */,
 				B08126EF217BD0B900A98970 /* PomodoroBarItem.swift in Sources */,

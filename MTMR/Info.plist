@@ -48,8 +48,6 @@
 	<string>Weather widget need your location for correct work</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Weather widget need your location for correct work</string>
-	<key>NSMainStoryboardFile</key>
-	<string>Main</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>MTMR needs access to Photo for work</string>
 	<key>NSPrincipalClass</key>
