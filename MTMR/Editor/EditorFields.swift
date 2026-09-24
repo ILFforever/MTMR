@@ -67,7 +67,7 @@ struct FieldRow<Control: View>: View {
                         Text(help).font(.caption).foregroundColor(.secondary)
                     }
                 }
-                .frame(width: 170, alignment: .leading)
+                .frame(width: 190, alignment: .leading)
                 control()
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
@@ -179,29 +179,49 @@ struct MultilineRow: View {
 }
 
 /// A color well plus a text field that accepts hex ("#FF9500") or a system
-/// color name ("orange"), with a button to clear back to the default.
+/// color name ("orange"). While unset it shows an empty swatch (not black, which
+/// would look like a chosen color); clicking it starts from `suggested`.
 struct ColorRow: View {
     let label: String
     @Binding var value: String
+    var suggested = "#3A3A3C"
 
     var body: some View {
         FieldRow(label: label) {
-            HStack(spacing: 6) {
-                TextField("Default", text: $value)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 110)
+            ColorControl(value: $value, suggested: suggested)
+        }
+    }
+}
+
+struct ColorControl: View {
+    @Binding var value: String
+    var suggested = "#3A3A3C"
+
+    var body: some View {
+        HStack(spacing: 6) {
+            TextField("Default", text: $value)
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: 110)
+            if value.isEmpty {
+                Button(action: { value = suggested }) {
+                    Circle()
+                        .strokeBorder(Color.secondary, style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.plain)
+                .help("Choose a color")
+                .frame(width: 44)
+            } else {
                 ColorPicker("", selection: Binding(
                     get: { Color(nsColor: value.namedOrHexColor ?? .clear) },
                     set: { value = NSColor($0).hexString }
                 ), supportsOpacity: false)
                     .labelsHidden()
-                if !value.isEmpty {
-                    Button(action: { value = "" }) {
-                        Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Use the default")
+                Button(action: { value = "" }) {
+                    Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
                 }
+                .buttonStyle(.borderless)
+                .help("Use the default")
             }
         }
     }
@@ -239,12 +259,19 @@ struct SymbolPicker: View {
 
     private var symbols: [String] {
         let all = ItemCatalog.suggestedSymbols
-        return filter.isEmpty ? all : all.filter { $0.localizedCaseInsensitiveContains(filter) }
+        guard !filter.isEmpty else { return all }
+        var matches = all.filter { $0.localizedCaseInsensitiveContains(filter) }
+        // Any other SF Symbol can be used by typing its exact name.
+        let typed = filter.trimmingCharacters(in: .whitespaces).lowercased()
+        if !matches.contains(typed), NSImage(systemSymbolName: typed, accessibilityDescription: nil) != nil {
+            matches.insert(typed, at: 0)
+        }
+        return matches
     }
 
     var body: some View {
         VStack(spacing: 8) {
-            TextField("Filter", text: filterState.projectedValue).textFieldStyle(.roundedBorder)
+            TextField("Search, or type any SF Symbol name", text: filterState.projectedValue).textFieldStyle(.roundedBorder)
             ScrollView {
                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(36), spacing: 6), count: 8), spacing: 6) {
                     ForEach(symbols, id: \.self) { name in

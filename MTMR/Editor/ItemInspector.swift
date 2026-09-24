@@ -11,10 +11,13 @@ import SwiftUI
 struct ItemInspector: View {
     @ObservedObject var item: EditorItem
     let isTopLevel: Bool
+    /// The editor's selection, so the Items section can open a child.
+    let selection: Binding<UUID?>
 
     @AppStorage("inspector.layout") private var layoutOpen = true
     @AppStorage("inspector.appearance") private var appearanceOpen = true
     @AppStorage("inspector.content") private var contentOpen = true
+    @AppStorage("inspector.items") private var itemsOpen = true
     @AppStorage("inspector.actions") private var actionsOpen = true
     @AppStorage("inspector.visibility") private var visibilityOpen = false
     @AppStorage("inspector.json") private var jsonOpen = false
@@ -24,43 +27,52 @@ struct ItemInspector: View {
             VStack(alignment: .leading, spacing: 14) {
                 header
 
-                InspectorSection(title: "Layout", symbol: "rectangle.split.3x1", isExpanded: $layoutOpen) {
-                    if isTopLevel {
-                        FieldRow(label: "Position") {
-                            Picker("", selection: Binding(get: { item.align }, set: { item.align = $0 })) {
-                                Text("Left").tag("left")
-                                Text("Center").tag("center")
-                                Text("Right").tag("right")
+                if item.info.isVisibleOnBar {
+                    InspectorSection(title: "Layout", symbol: "rectangle.split.3x1", isExpanded: $layoutOpen) {
+                        if isTopLevel {
+                            FieldRow(label: "Position") {
+                                Picker("", selection: Binding(get: { item.align }, set: { item.align = $0 })) {
+                                    Text("Left").tag("left")
+                                    Text("Center").tag("center")
+                                    Text("Right").tag("right")
+                                }
+                                .pickerStyle(.segmented)
+                                .labelsHidden()
+                                .frame(maxWidth: 220)
                             }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
-                            .frame(maxWidth: 220)
                         }
+                        if item.info.supportsIcon && !item.info.fields.contains(where: { $0.path == "title" }) {
+                            TextFieldRow(label: "Title", placeholder: "None", text: string("title"))
+                        }
+                        NumberFieldRow(label: "Width", placeholder: "Automatic", help: "In points; the bar is about 1000 wide",
+                                       value: number("width"))
                     }
-                    if !item.info.fields.contains(where: { $0.path == "title" }) {
-                        TextFieldRow(label: "Title", placeholder: "None", text: string("title"))
-                    }
-                    NumberFieldRow(label: "Width", placeholder: "Auto", help: "Points; the bar is about 1000 wide", value: number("width"))
                 }
 
-                InspectorSection(title: "Appearance", symbol: "paintpalette", isExpanded: $appearanceOpen) {
-                    SymbolRow(label: "Icon", value: string("symbol"))
-                    ColorRow(label: "Icon color", value: string("iconColor"))
-                    ColorRow(label: "Background", value: string("background"))
-                    ToggleRow(label: "Pill shape", help: "Rounded ends; needs a background",
-                              defaultValue: false,
-                              value: Binding(get: { item[string: "style"] == "pill" },
-                                             set: { item[string: "style"] = ($0 ?? false) ? "pill" : nil }))
-                    NumberFieldRow(label: "Corner radius", placeholder: "Default", value: number("cornerRadius"))
-                    ToggleRow(label: "Border", help: "The standard gray button background",
-                              defaultValue: true, value: bool("bordered"))
-                    NumberFieldRow(label: "Font size", placeholder: "15", value: number("fontSize"))
-                    ChoiceRow(label: "Font weight",
-                              options: ["ultralight", "thin", "light", "regular", "medium", "semibold", "bold", "heavy", "black"],
-                              value: string("fontWeight"))
-                    ColorRow(label: "Text color", value: string("textColor"))
-                    ToggleRow(label: "Fixed-width digits", help: "Stops changing numbers from jittering",
-                              defaultValue: false, value: bool("monospacedDigits"))
+                if item.info.supportsIcon {
+                    InspectorSection(title: "Appearance", symbol: "paintpalette", isExpanded: $appearanceOpen) {
+                        SymbolRow(label: "Icon", value: string("symbol"))
+                        if item.info.supportsButtonStyling {
+                            ColorRow(label: "Icon color", value: string("iconColor"), suggested: "#FFFFFF")
+                            BackgroundRow(item: item)
+                            if item[string: "background"] != nil {
+                                ShapeRow(item: item)
+                            }
+                            NumberFieldRow(label: "Font size", placeholder: "15", value: number("fontSize"))
+                            ChoiceRow(label: "Font weight",
+                                      options: ["ultralight", "thin", "light", "regular", "medium", "semibold", "bold", "heavy", "black"],
+                                      value: string("fontWeight"))
+                            ColorRow(label: "Text color", value: string("textColor"), suggested: "#FFFFFF")
+                            ToggleRow(label: "Fixed-width digits", help: "Keeps changing numbers from shifting",
+                                      defaultValue: false, value: bool("monospacedDigits"))
+                        }
+                    }
+                }
+
+                if item.info.isContainer {
+                    InspectorSection(title: "Items", symbol: "square.stack", isExpanded: $itemsOpen) {
+                        ContainerItemsEditor(container: item, selection: selection)
+                    }
                 }
 
                 if !item.info.fields.isEmpty {
@@ -71,7 +83,7 @@ struct ItemInspector: View {
                     }
                 }
 
-                if !item.info.isContainer {
+                if item.info.supportsActions {
                     InspectorSection(title: "Actions", symbol: "hand.tap", isExpanded: $actionsOpen) {
                         ActionsEditor(item: item)
                     }
@@ -81,11 +93,14 @@ struct ItemInspector: View {
                     Text("Only show this item when all of these are true. Leave blank to always show it.")
                         .font(.caption).foregroundColor(.secondary)
                         .padding(.vertical, 6)
-                    TextFieldRow(label: "App is", placeholder: "Any app", help: "Regex on name or bundle ID", text: string("when.app"))
-                    TextFieldRow(label: "App is not", placeholder: "—", help: "Regex on name or bundle ID", text: string("when.notApp"))
+                    AppRuleRow(label: "App is", placeholder: "Any app", text: string("when.app"))
+                    AppRuleRow(label: "App is not", placeholder: "No exceptions", text: string("when.notApp"))
                     TextFieldRow(label: "Time is", placeholder: "Any time", help: "e.g. 09:00-18:00", text: string("when.time"))
-                    TextFieldRow(label: "Command succeeds", placeholder: "—", help: "Shown while it exits 0", text: string("when.script"))
-                    NumberFieldRow(label: "Check command every", placeholder: "10", help: "Seconds", value: number("when.every"))
+                    TextFieldRow(label: "Command succeeds", placeholder: "No command", help: "Shown while it exits with 0",
+                                 text: string("when.script"))
+                    if item[string: "when.script"] != nil {
+                        NumberFieldRow(label: "Check command every", placeholder: "10", help: "Seconds", value: number("when.every"))
+                    }
                 }
 
                 InspectorSection(title: "JSON", symbol: "curlybraces", isExpanded: $jsonOpen) {
@@ -104,10 +119,17 @@ struct ItemInspector: View {
                 .background(RoundedRectangle(cornerRadius: 10).fill(Color.accentColor.opacity(0.15)))
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.displayName).font(.title2.weight(.semibold))
-                Text(item.info.name + (item.info.isContainer ? " · \(item.children?.count ?? 0) items" : ""))
-                    .foregroundColor(.secondary)
+                Text(subtitle).foregroundColor(.secondary)
             }
         }
+    }
+
+    /// e.g. "Status · Network Speed", without repeating a name the title already shows.
+    private var subtitle: String {
+        var parts = [item.info.category]
+        if item.displayName != item.info.name { parts.append(item.info.name) }
+        if let count = item.children?.count { parts.append(count == 1 ? "1 item" : "\(count) items") }
+        return parts.joined(separator: " · ")
     }
 
     @ViewBuilder
@@ -181,6 +203,7 @@ struct ActionsEditor: View {
             .padding(.bottom, 6)
         }
         .padding(.top, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var hasBuiltInAction: Bool {
@@ -363,5 +386,212 @@ struct RawJSONEditor: View {
         } catch {
             self.error = "Invalid JSON: \(error.localizedDescription)"
         }
+    }
+}
+
+// MARK: - Background and shape
+
+/// One choice instead of separate "border", "background" and "pill" switches
+/// that could contradict each other.
+struct BackgroundRow: View {
+    @ObservedObject var item: EditorItem
+
+    private var mode: String {
+        if item[string: "background"] != nil { return "color" }
+        if item[bool: "bordered"] == false { return "none" }
+        return "standard"
+    }
+
+    var body: some View {
+        FieldRow(label: "Background", help: mode == "standard" ? "The standard gray key" : nil) {
+            HStack(spacing: 8) {
+                Picker("", selection: Binding(get: { mode }, set: setMode)) {
+                    Text("Standard").tag("standard")
+                    Text("None").tag("none")
+                    Text("Color").tag("color")
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 210)
+                if mode == "color" {
+                    ColorPicker("", selection: Binding(
+                        get: { Color(nsColor: item[string: "background"]?.namedOrHexColor ?? .clear) },
+                        set: { item[string: "background"] = NSColor($0).hexString }
+                    ), supportsOpacity: false)
+                        .labelsHidden()
+                }
+            }
+        }
+    }
+
+    private func setMode(_ mode: String) {
+        switch mode {
+        case "color":
+            item[string: "background"] = item[string: "background"] ?? "#3A3A3C"
+            item[bool: "bordered"] = nil
+        case "none":
+            item[string: "background"] = nil
+            item[bool: "bordered"] = false
+            item[string: "style"] = nil
+            item[number: "cornerRadius"] = nil
+        default:
+            item[string: "background"] = nil
+            item[bool: "bordered"] = nil
+            item[string: "style"] = nil
+            item[number: "cornerRadius"] = nil
+        }
+    }
+}
+
+/// Corner shape for a colored background.
+struct ShapeRow: View {
+    @ObservedObject var item: EditorItem
+
+    private var shape: String {
+        if item[string: "style"] == "pill" { return "pill" }
+        if item[number: "cornerRadius"] != nil { return "rounded" }
+        return "standard"
+    }
+
+    var body: some View {
+        FieldRow(label: "Shape") {
+            Picker("", selection: Binding(get: { shape }, set: setShape)) {
+                Text("Standard").tag("standard")
+                Text("Rounded").tag("rounded")
+                Text("Pill").tag("pill")
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 210)
+        }
+    }
+
+    private func setShape(_ shape: String) {
+        item[string: "style"] = shape == "pill" ? "pill" : nil
+        item[number: "cornerRadius"] = shape == "rounded" ? (item[number: "cornerRadius"] ?? 8) : nil
+    }
+}
+
+// MARK: - Visibility helpers
+
+/// An app-name rule with a menu of running apps; choosing one adds it
+/// ("Safari", then "Safari|Mail"), so no regex needs to be typed.
+struct AppRuleRow: View {
+    let label: String
+    let placeholder: String
+    @Binding var text: String
+
+    var body: some View {
+        FieldRow(label: label, help: "App names or bundle IDs, separated by |") {
+            HStack(spacing: 6) {
+                TextField(placeholder, text: $text)
+                    .textFieldStyle(.roundedBorder)
+                Menu {
+                    ForEach(PresetLibrary.runningApps(), id: \.bundleId) { app in
+                        Button(app.name) { add(app.name) }
+                    }
+                } label: {
+                    Image(systemName: "plus.app")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Add a running app")
+            }
+        }
+    }
+
+    private func add(_ name: String) {
+        let names = text.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        guard !names.contains(name) else { return }
+        text = (names + [name]).joined(separator: "|")
+    }
+}
+
+// MARK: - Container contents
+
+/// The items inside a group or popover: open one to edit it, reorder, remove, or add.
+struct ContainerItemsEditor: View {
+    @ObservedObject var container: EditorItem
+    let selection: Binding<UUID?>
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            let children = container.children ?? []
+            if children.isEmpty {
+                Text(container.type == "popover" ? "Empty. Add what it should expand into, such as a Volume Slider."
+                                                 : "Empty. Add the items it should open.")
+                    .foregroundColor(.secondary)
+                    .padding(.vertical, 8)
+            }
+            ForEach(Array(children.enumerated()), id: \.element.id) { index, child in
+                ChildRow(child: child,
+                         canMoveUp: index > 0,
+                         canMoveDown: index < children.count - 1,
+                         open: { selection.wrappedValue = child.id },
+                         move: { offset in move(index, by: offset) },
+                         remove: { remove(child) })
+                Divider().opacity(0.5)
+            }
+            Menu {
+                ForEach(ItemCatalog.categories, id: \.self) { category in
+                    Menu(category) {
+                        ForEach(ItemCatalog.all.filter { $0.category == category && !$0.isContainer }, id: \.type) { info in
+                            Button(action: { add(info.type) }) { Label(info.name, systemImage: info.symbol) }
+                        }
+                    }
+                }
+            } label: {
+                Label("Add Item", systemImage: "plus")
+            }
+            .fixedSize()
+            .padding(.vertical, 8)
+        }
+    }
+
+    private func move(_ index: Int, by offset: Int) {
+        guard let document = container.document else { return }
+        document.move(in: container, from: IndexSet(integer: index), to: offset > 0 ? index + 2 : index - 1)
+    }
+
+    private func remove(_ child: EditorItem) {
+        container.document?.remove(child)
+    }
+
+    private func add(_ type: String) {
+        guard let document = container.document else { return }
+        let item = ItemCatalog.newItem(type, align: "center", document: document)
+        document.add(item, to: container)
+    }
+}
+
+private struct ChildRow: View {
+    @ObservedObject var child: EditorItem
+    let canMoveUp: Bool
+    let canMoveDown: Bool
+    let open: () -> Void
+    let move: (Int) -> Void
+    let remove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(action: open) {
+                HStack(spacing: 8) {
+                    Image(systemName: child.displaySymbol).foregroundColor(.accentColor).frame(width: 18)
+                    Text(child.displayName)
+                    Image(systemName: "chevron.right").font(.caption).foregroundColor(.secondary)
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Edit this item")
+            Button(action: { move(-1) }) { Image(systemName: "arrow.up") }
+                .buttonStyle(.borderless).disabled(!canMoveUp).help("Move up")
+            Button(action: { move(1) }) { Image(systemName: "arrow.down") }
+                .buttonStyle(.borderless).disabled(!canMoveDown).help("Move down")
+            Button(action: remove) { Image(systemName: "trash") }
+                .buttonStyle(.borderless).help("Remove")
+        }
+        .padding(.vertical, 7)
     }
 }

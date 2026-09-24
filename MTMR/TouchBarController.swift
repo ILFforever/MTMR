@@ -488,6 +488,10 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     }
     
     func closure(for action: Action) -> (() -> Void)? {
+        if case let .shellScript(_, parameters) = action.value,
+           parameters.last?.trimmingCharacters(in: .whitespaces).isEmpty ?? true {
+            return nil // e.g. an action just added in Settings, before a command is typed
+        }
         switch action.value {
         case let .hidKey(keycode: keycode):
             return { HIDPostAuxKey(keycode) }

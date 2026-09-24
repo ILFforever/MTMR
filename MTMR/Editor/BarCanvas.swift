@@ -61,6 +61,25 @@ struct BarCanvas: View {
     @ObservedObject var document: PresetDocument
     @ObservedObject var session: EditorSession
 
+    private static let positions = [("left", "Left"), ("center", "Center"), ("right", "Right")]
+
+    @ViewBuilder
+    private func chipMenu(_ item: EditorItem) -> some View {
+        Button("Edit") { session.selection = item.id }
+        Button("Duplicate") { document.duplicate(item) }
+        Menu("Move To") {
+            ForEach(BarCanvas.positions, id: \.0) { align, title in
+                Button(title) { withAnimation { document.place(item, align: align, at: .max) } }
+                    .disabled(item.align == align)
+            }
+        }
+        Divider()
+        Button("Remove") {
+            if session.selection == item.id { session.selection = nil }
+            withAnimation { document.remove(item) }
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
@@ -94,6 +113,7 @@ struct BarCanvas: View {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                     BarChip(item: item, isSelected: session.selection == item.id)
                         .onTapGesture { session.selection = item.id }
+                        .contextMenu { chipMenu(item) }
                         .onDrag {
                             session.dragging = .move(id: item.id)
                             return DragPayload.move(id: item.id).provider
@@ -128,11 +148,11 @@ struct BarChip: View {
         return CGFloat(item.fields["cornerRadius"]?.number ?? 6)
     }
 
+    /// Media keys and the like read best as icons; everything else gets a short
+    /// label so similar icons (CPU, memory…) can be told apart.
     private var label: String? {
         if let title = item.fields["title"]?.string, !title.isEmpty { return title }
-        // Icon-only items (media keys, sliders' popovers…) show just the icon.
-        if item.fields["symbol"] != nil || item.info.category == "Media" || item.info.category == "Keys" { return nil }
-        return item.info.name
+        return item.info.isIconOnly || item.isContainer ? nil : item.shortName
     }
 
     var body: some View {
@@ -142,10 +162,17 @@ struct BarChip: View {
             if let label = label {
                 Text(label)
                     .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: 110)
                     .foregroundColor((item.fields["textColor"]?.string?.namedOrHexColor).map { Color(nsColor: $0) } ?? .white)
+            }
+            if item.isContainer {
+                Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).foregroundColor(.gray)
+                    .help("Opens more items")
             }
             if item.fields["when"] != nil {
                 Image(systemName: "eye").font(.system(size: 9)).foregroundColor(.gray)
+                    .help("Only shows under some conditions")
             }
         }
         .font(.system(size: 12))

@@ -95,6 +95,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable],
                                   backing: .buffered, defer: false)
             window.title = "\(Brand.name) Settings"
+            // A unified title bar that the SwiftUI header draws into.
+            window.styleMask.insert(.fullSizeContentView)
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            // No NSToolbar: it would sit over the header and swallow its clicks.
             window.contentView = NSHostingView(rootView: view)
             window.isReleasedWhenClosed = false
             window.setFrameAutosaveName("StripeSettings")

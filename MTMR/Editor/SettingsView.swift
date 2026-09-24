@@ -32,9 +32,15 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            TouchBarPreviewView(model: preview)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 10)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 5) {
+                    Circle().fill(Color.green).frame(width: 6, height: 6)
+                    Text("On your Touch Bar").font(.caption.weight(.semibold)).foregroundColor(.secondary)
+                }
+                TouchBarPreviewView(model: preview)
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 10)
             BarCanvas(document: document, session: session)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
@@ -47,6 +53,8 @@ struct SettingsView: View {
             }
         }
         .frame(minWidth: 860, minHeight: 680)
+        // The header sits in the title bar, beside the window buttons.
+        .edgesIgnoringSafeArea(.top)
     }
 
     private var leftPane: some View {
@@ -69,25 +77,41 @@ struct SettingsView: View {
 
     // MARK: Header
 
+    /// Lives in the (transparent) title bar: preset on the left after the window
+    /// buttons, then undo/redo, save status and the file button on the right.
     private var header: some View {
         HStack(spacing: 10) {
             presetMenu
-            addMenu
             Spacer()
-            if let error = document.loadError {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundColor(.red).lineLimit(1)
-            } else if let saved = document.lastSaved {
-                Label("Saved \(saved.formatted(date: .omitted, time: .standard))", systemImage: "checkmark.circle")
-                    .foregroundColor(.secondary)
-            } else {
-                Text("Changes apply to the Touch Bar as you edit").foregroundColor(.secondary)
+            Group {
+                if let error = document.loadError {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundColor(.red)
+                } else if let saved = document.lastSaved {
+                    Text("Saved \(saved.formatted(date: .omitted, time: .shortened))")
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("Changes apply as you edit").foregroundColor(.secondary)
+                }
+            }
+            .font(.callout)
+            .lineLimit(1)
+            HStack(spacing: 2) {
+                Button(action: document.undo) { Image(systemName: "arrow.uturn.backward") }
+                    .disabled(!document.canUndo)
+                    .help("Undo the last change")
+                Button(action: document.redo) { Image(systemName: "arrow.uturn.forward") }
+                    .disabled(!document.canRedo)
+                    .help("Redo")
             }
             Button(action: openInEditor) { Image(systemName: "doc.text") }
                 .help("Open the preset file in a text editor")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .buttonStyle(.borderless)
+        .padding(.leading, 78) // clear of the window buttons
+        .padding(.trailing, 12)
+        .frame(height: 30)     // the standard title bar height, level with the window buttons
+        .padding(.bottom, 6)
     }
 
     private var presetMenu: some View {
@@ -116,26 +140,9 @@ struct SettingsView: View {
         } label: {
             Label(document.displayName, systemImage: document.path == standardConfigPath ? "rectangle.3.group" : "app")
         }
-        .frame(maxWidth: 220)
+        .menuStyle(.borderlessButton)
+        .fixedSize()
         .help("Which bar you're editing: the main one, or one for a specific app")
-    }
-
-    private var addMenu: some View {
-        Menu {
-            ForEach(ItemCatalog.categories, id: \.self) { category in
-                Menu(category) {
-                    ForEach(ItemCatalog.all.filter { $0.category == category }, id: \.type) { info in
-                        Button(action: { add(info.type) }) {
-                            Label(info.name, systemImage: info.symbol)
-                        }
-                    }
-                }
-            }
-        } label: {
-            Label("Add", systemImage: "plus")
-        }
-        .frame(maxWidth: 90)
-        .help("Add an item after the selection, or inside the selected group or popover")
     }
 
     // MARK: Sidebar
@@ -203,38 +210,22 @@ struct SettingsView: View {
     @ViewBuilder
     private var detail: some View {
         if let item = document.find(session.selection) {
-            ItemInspector(item: item, isTopLevel: document.items.contains { $0 === item })
+            ItemInspector(item: item, isTopLevel: document.items.contains { $0 === item }, selection: $session.selection)
                 .id(item.id) // fresh field state per item
         } else {
             VStack(spacing: 10) {
                 Image(systemName: "hand.point.up.left").font(.system(size: 36)).foregroundColor(.secondary)
-                Text("Select an item to edit it").font(.title3)
-                Text("Drag items to reorder them. Right-click for more options.").foregroundColor(.secondary)
+                Text("Select an item on the bar to edit it").font(.title3)
+                Text("Drag items from the Library onto the bar to add them. Right-click an item for more options.")
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 360)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
     // MARK: Actions
-
-    private func add(_ type: String) {
-        let selected = document.find(session.selection)
-        if let container = selected, container.isContainer {
-            let item = ItemCatalog.newItem(type, align: "center", document: document)
-            document.add(item, to: container)
-            session.expanded.insert(container.id)
-            session.selection = item.id
-        } else {
-            let item = ItemCatalog.newItem(type, align: selected?.align ?? "center", document: document)
-            document.add(item, to: nil)
-            if let selected = selected, let index = document.items.firstIndex(where: { $0 === selected }) {
-                // Place it right after the selection rather than at the end.
-                document.items.removeLast()
-                document.items.insert(item, at: index + 1)
-            }
-            session.selection = item.id
-        }
-    }
 
     private func delete(_ item: EditorItem) {
         if session.selection == item.id { session.selection = nil }

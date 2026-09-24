@@ -52,6 +52,19 @@ final class EditorItem: ObservableObject, Identifiable {
 
     var displaySymbol: String { fields["symbol"]?.string ?? info.symbol }
 
+    /// A short label for the bar canvas: the title, a script's last word
+    /// ("status.sh ram" → "ram"), or the type's name.
+    var shortName: String {
+        if let title = fields["title"]?.string, !title.trimmingCharacters(in: .whitespaces).isEmpty {
+            return title
+        }
+        if fields[path: "source.inline"] != nil || fields[path: "source.filePath"] != nil,
+           let last = displayName.split(separator: " ").last {
+            return String(last)
+        }
+        return info.name
+    }
+
     var json: JSONValue {
         var result = fields
         if let children = children {
@@ -120,6 +133,13 @@ final class PresetDocument: ObservableObject {
     private var saveWork: DispatchWorkItem?
     private var backedUpPaths = Set<String>()
 
+    // Undo history: the preset's text after each save.
+    private var savedText: String?
+    private var undoStack: [String] = []
+    private var redoStack: [String] = []
+    var canUndo: Bool { !undoStack.isEmpty }
+    var canRedo: Bool { !redoStack.isEmpty }
+
     init(path: String) {
         self.path = path
         load()
@@ -139,6 +159,8 @@ final class PresetDocument: ObservableObject {
     func open(path: String) {
         flushSave()
         self.path = path
+        undoStack = []
+        redoStack = []
         load()
     }
 
@@ -151,6 +173,7 @@ final class PresetDocument: ObservableObject {
         do {
             let root = try JSONValue.parse(text)
             items = (root.array ?? []).compactMap { $0.object }.map { EditorItem(fields: $0, document: self) }
+            savedText = serialized
         } catch {
             items = []
             loadError = "Couldn't read \((path as NSString).lastPathComponent): \(error.localizedDescription)"
@@ -266,10 +289,44 @@ final class PresetDocument: ObservableObject {
         }
     }
 
+    private var serialized: String {
+        return JSONValue.array(items.map { $0.json }).pretty() + "\n"
+    }
+
+    func undo() {
+        flushSave()
+        guard let previous = undoStack.popLast(), let current = savedText else { return }
+        redoStack.append(current)
+        restore(previous)
+    }
+
+    func redo() {
+        flushSave()
+        guard let next = redoStack.popLast(), let current = savedText else { return }
+        undoStack.append(current)
+        restore(next)
+    }
+
+    private func restore(_ text: String) {
+        guard let root = try? JSONValue.parse(text) else { return }
+        items = (root.array ?? []).compactMap { $0.object }.map { EditorItem(fields: $0, document: self) }
+        write(text)
+    }
+
     private func save() {
         saveWork = nil
+        let text = serialized
+        guard text != savedText else { return }
+        if let previous = savedText {
+            undoStack.append(previous)
+            redoStack = []
+        }
+        write(text)
+    }
+
+    private func write(_ text: String) {
         backUpOnce()
-        let text = JSONValue.array(items.map { $0.json }).pretty() + "\n"
+        savedText = text
         do {
             try FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
                                                     withIntermediateDirectories: true)
@@ -319,6 +376,18 @@ struct ItemTypeInfo {
     let defaults: [String: JSONValue]
     let fields: [FieldSpec]
     var isContainer: Bool { type == "group" || type == "popover" }
+
+    // What the inspector offers for this type, so it only shows controls that do something.
+
+    /// Swipe gestures aren't drawn on the bar.
+    var isVisibleOnBar: Bool { type != "swipe" }
+    /// Buttons (and popovers, which are buttons) take the full set of styling options.
+    var supportsButtonStyling: Bool { !["group", "volume", "brightness", "swipe"].contains(type) }
+    /// Groups show just an icon or title for their collapsed button.
+    var supportsIcon: Bool { supportsButtonStyling || type == "group" }
+    var supportsActions: Bool { !isContainer && !["volume", "brightness", "swipe"].contains(type) }
+    /// Media keys and similar read best as icons alone (on the bar canvas too).
+    var isIconOnly: Bool { category == "Media" || category == "Keys" || type == "close" }
 }
 
 enum ItemCatalog {
@@ -412,7 +481,7 @@ enum ItemCatalog {
                               FieldSpec(path: "autoClose", label: "Auto-close after (s)", kind: .number(placeholder: "never"))]),
         ItemTypeInfo(type: "group", name: "Group", symbol: "folder", category: "Containers",
                      defaults: ["symbol": .string("folder.fill")], fields: []),
-        simple("close", "Close (inside a group)", "chevron.left", "Containers"),
+        simple("close", "Close Group", "chevron.left", "Containers"),
 
         // Other
         ItemTypeInfo(type: "swipe", name: "Swipe Gesture", symbol: "hand.draw", category: "Other",
