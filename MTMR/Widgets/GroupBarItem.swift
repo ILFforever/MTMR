@@ -93,7 +93,7 @@ class GroupBarItem: NSPopoverTouchBarItem, NSTouchBarDelegate {
     }
 
     func createItems() {
-        for (identifier, definition) in itemDefinitions {
+        for (identifier, definition) in itemDefinitions where TouchBarController.shared.isVisible(definition) {
             items[identifier] = TouchBarController.shared.createItem(forIdentifier: identifier, definition: definition)
         }
     }

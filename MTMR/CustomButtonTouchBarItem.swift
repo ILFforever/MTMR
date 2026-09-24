@@ -119,6 +119,7 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
         let image = button.image
         let cell = CustomButtonCell(parentItem: self)
         button.cell = cell
+        (button as? CustomHeightButton)?.horizontalPadding = style.cornerRadius != nil ? 10 : 0
         button.wantsLayer = style.cornerRadius != nil
         button.layer?.cornerRadius = style.cornerRadius ?? 0
         button.layer?.backgroundColor = nil
@@ -190,9 +191,15 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
 }
 
 class CustomHeightButton: NSButton {
+    /// Extra width on each side, so text isn't flush against a pill's edges.
+    var horizontalPadding: CGFloat = 0 {
+        didSet { invalidateIntrinsicContentSize() }
+    }
+
     override var intrinsicContentSize: NSSize {
         var size = super.intrinsicContentSize
         size.height = 30
+        size.width += horizontalPadding * 2
         return size
     }
 }

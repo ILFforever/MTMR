@@ -125,6 +125,6 @@ extension String {
             "pink": .systemPink, "brown": .systemBrown, "gray": .systemGray, "grey": .systemGray,
             "white": .white, "black": .black,
         ]
-        return named[lowercased()] ?? (hasPrefix("#") ? hexColor : nil)
+        return named[lowercased()] ?? hexColor
     }
 }

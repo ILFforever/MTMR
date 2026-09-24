@@ -80,7 +80,10 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
 
     var touchBar: NSTouchBar!
 
+    /// The preset chosen by the user (items.json, or one opened from the menu).
     fileprivate var lastPresetPath = ""
+    /// The preset on screen: `lastPresetPath`, or a per-app preset from apps/<bundle-id>.json.
+    private var currentPresetPath = ""
     var jsonItems: [BarItemDefinition] = []
     var itemDefinitions: [NSTouchBarItem.Identifier: BarItemDefinition] = [:]
     var items: [NSTouchBarItem.Identifier: NSTouchBarItem] = [:]
@@ -124,6 +127,13 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
 
         blacklistAppIdentifiers = AppSettings.blacklistedAppIds
 
+        ConditionMonitor.shared.onChange = { [weak self] in
+            // Don't rebuild the main bar underneath an open group or popover.
+            guard let self = self, self.touchBar?.delegate === self else { return }
+            self.updateActiveApp()
+        }
+        ConditionMonitor.shared.start()
+
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(activeApplicationChanged), name: NSWorkspace.didLaunchApplicationNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(activeApplicationChanged), name: NSWorkspace.didTerminateApplicationNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(activeApplicationChanged), name: NSWorkspace.didActivateApplicationNotification, object: nil)
@@ -138,6 +148,11 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         touchBar = NSTouchBar()
         jsonItems = newJsonItems
         itemDefinitions = [:]
+        leftIdentifiers = []
+        centerIdentifiers = []
+        rightIdentifiers = []
+        items = [:]
+        ConditionMonitor.shared.reset()
 
         loadItemDefinitions(jsonItems: jsonItems)
         
@@ -207,7 +222,19 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         updateActiveApp()
     }
 
+    /// apps/<bundle-id>.json in the config folder, if the frontmost app has one.
+    private var perAppPresetPath: String? {
+        guard let bundleId = frontmostApplicationIdentifier else { return nil }
+        let path = appSupportDirectory.appending("/apps/\(bundleId).json")
+        return FileManager.default.fileExists(atPath: path) ? path : nil
+    }
+
     func updateActiveApp() {
+        let desiredPreset = perAppPresetPath ?? lastPresetPath
+        if !desiredPreset.isEmpty, desiredPreset != currentPresetPath {
+            loadPreset(path: desiredPreset) // calls back into updateActiveApp
+            return
+        }
         if frontmostApplicationIdentifier != nil && blacklistAppIdentifiers.firstIndex(of: frontmostApplicationIdentifier!) != nil {
             dismissTouchBar()
         } else {
@@ -242,6 +269,11 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
 
     func reloadPreset(path: String) {
         lastPresetPath = path
+        loadPreset(path: perAppPresetPath ?? path)
+    }
+
+    private func loadPreset(path: String) {
+        currentPresetPath = path
         let items = path.fileData?.barItemDefinitions() ?? [BarItemDefinition(type: .staticButton(title: "bad preset"), actions: [], action: .none, legacyLongAction: .none, additionalParameters: [:])]
         createAndUpdatePreset(newJsonItems: items)
     }
@@ -271,19 +303,7 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         swipeItems = []
 
         for (identifier, definition) in itemDefinitions {
-            var show = true
-            
-            if let frontApp = frontmostApplicationIdentifier {
-                if case let .matchAppId(regexString)? = definition.additionalParameters[.matchAppId] {
-                    let regex = try! NSRegularExpression(pattern: regexString)
-                    let range = NSRange(location: 0, length: frontApp.count)
-                    if regex.firstMatch(in: frontApp, range: range) == nil {
-                        show = false
-                    }
-                }
-            }
-            
-            if show {
+            if isVisible(definition) {
                 let item = createItem(forIdentifier: identifier, definition: definition)
                 if item is SwipeItem {
                     swipeItems.append(item as! SwipeItem)
@@ -292,6 +312,12 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
                 }
             }
         }
+    }
+
+    /// Whether an item's "when" condition (if any) currently holds.
+    func isVisible(_ definition: BarItemDefinition) -> Bool {
+        guard case let .when(condition)? = definition.additionalParameters[.when] else { return true }
+        return condition.isSatisfied(frontmost: NSWorkspace.shared.frontmostApplication)
     }
 
     @objc func setupControlStripPresence() {

@@ -669,8 +669,8 @@ enum GeneralParameter {
     case bordered(_: Bool)
     case background(_: NSColor)
     case title(_: String)
-    case matchAppId(_: String)
     case style(_: ItemStyle)
+    case when(_: ItemCondition)
 }
 
 struct GeneralParameters: Decodable {
@@ -685,6 +685,7 @@ struct GeneralParameters: Decodable {
         case title
         case matchAppId
         case style // stands for all ItemStyle keys, which are decoded together
+        case when
     }
 
     init(from decoder: Decoder) throws {
@@ -708,7 +709,7 @@ struct GeneralParameters: Decodable {
             result[.bordered] = .bordered(borderedFlag)
         }
 
-        if let backgroundColor = try container.decodeIfPresent(String.self, forKey: .background)?.hexColor {
+        if let backgroundColor = try container.decodeIfPresent(String.self, forKey: .background)?.namedOrHexColor {
             result[.background] = .background(backgroundColor)
         }
 
@@ -716,8 +717,10 @@ struct GeneralParameters: Decodable {
             result[.title] = .title(title)
         }
 
-        if let matchAppId = try container.decodeIfPresent(String.self, forKey: .matchAppId) {
-            result[.matchAppId] = .matchAppId(matchAppId)
+        if let condition = try container.decodeIfPresent(ItemCondition.self, forKey: .when) {
+            result[.when] = .when(condition)
+        } else if let matchAppId = try container.decodeIfPresent(String.self, forKey: .matchAppId) {
+            result[.when] = .when(ItemCondition(app: matchAppId))
         }
 
         parameters = result
