@@ -125,7 +125,7 @@ extension NSSlider {
         // Sit on a rounded gray panel, like the Control Strip's expanded sliders.
         row.wantsLayer = true
         row.layer?.backgroundColor = NSColor(white: 1, alpha: 0.14).cgColor
-        row.layer?.cornerRadius = 8
+        row.layer?.cornerRadius = 6 // matches the standard Touch Bar key rounding
         row.heightAnchor.constraint(equalToConstant: 30).isActive = true // full bar height, like the buttons
         return row
     }
