@@ -32,7 +32,7 @@ final class EditorItem: ObservableObject, Identifiable {
 
     var align: String {
         get { fields["align"]?.string ?? (type == "escape" ? "left" : "center") }
-        set { self[string: "align"] = newValue }
+        set { self[string: "align"] = (newValue == "center" && type != "escape") ? nil : newValue }
     }
 
     /// What the sidebar shows: the title if there is one; for scripts, what they
@@ -113,6 +113,9 @@ final class PresetDocument: ObservableObject {
     @Published var items: [EditorItem] = []
     @Published var loadError: String?
     @Published var lastSaved: Date?
+
+    /// Called after each save, once the bar has reloaded.
+    var onSaved: (() -> Void)?
 
     private var saveWork: DispatchWorkItem?
     private var backedUpPaths = Set<String>()
@@ -206,6 +209,22 @@ final class PresetDocument: ObservableObject {
         scheduleSave()
     }
 
+    /// Puts a top-level item at `index` within a position's section, moving it
+    /// there if it's already on the bar. Used by drag and drop on the bar canvas.
+    func place(_ item: EditorItem, align: String, at index: Int) {
+        items.removeAll { $0 === item }
+        if item.align != align { item.align = align }
+        let section = items(aligned: align)
+        if index < section.count, let target = items.firstIndex(where: { $0 === section[index] }) {
+            items.insert(item, at: target)
+        } else if let last = section.last, let target = items.firstIndex(where: { $0 === last }) {
+            items.insert(item, at: target + 1)
+        } else {
+            items.append(item)
+        }
+        scheduleSave()
+    }
+
     func move(in container: EditorItem, from source: IndexSet, to destination: Int) {
         container.children?.move(fromOffsets: source, toOffset: destination)
         container.changed()
@@ -259,6 +278,7 @@ final class PresetDocument: ObservableObject {
             try Data(text.utf8).write(to: URL(fileURLWithPath: path))
             lastSaved = Date()
             TouchBarController.shared.reloadAfterEdit()
+            onSaved?()
         } catch {
             loadError = "Couldn't save: \(error.localizedDescription)"
         }

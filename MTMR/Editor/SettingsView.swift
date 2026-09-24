@@ -14,6 +14,12 @@ import SwiftUI
 final class EditorSession: ObservableObject {
     @Published var selection: UUID?
     @Published var expanded = Set<UUID>()
+    /// What's being dragged, recorded when the drag starts (see BarCanvas.swift).
+    @Published var dragging: DragPayload?
+    /// Which drop zone is highlighted: "left", "center", "right" or "library".
+    @Published var targetZone: String?
+    /// The left pane: the item library ("library") or the outline of items ("outline").
+    @Published var leftPane = "library"
 }
 
 struct SettingsView: View {
@@ -28,16 +34,37 @@ struct SettingsView: View {
             header
             TouchBarPreviewView(model: preview)
                 .padding(.horizontal, 16)
+                .padding(.bottom, 10)
+            BarCanvas(document: document, session: session)
+                .padding(.horizontal, 16)
                 .padding(.bottom, 12)
             Divider()
             HSplitView {
-                sidebar
-                    .frame(minWidth: 230, idealWidth: 260, maxWidth: 380)
+                leftPane
+                    .frame(minWidth: 260, idealWidth: 320, maxWidth: 440)
                 detail
                     .frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(minWidth: 780, minHeight: 560)
+        .frame(minWidth: 860, minHeight: 680)
+    }
+
+    private var leftPane: some View {
+        VStack(spacing: 0) {
+            Picker("", selection: $session.leftPane) {
+                Text("Library").tag("library")
+                Text("Outline").tag("outline")
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(10)
+            if session.leftPane == "library" {
+                ItemLibrary(document: document, session: session)
+                    .padding([.horizontal, .bottom], 10)
+            } else {
+                sidebar
+            }
+        }
     }
 
     // MARK: Header

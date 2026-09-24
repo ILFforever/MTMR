@@ -86,6 +86,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     func show() {
         if window == nil {
+            // Refresh the preview as soon as the bar has redrawn after a save.
+            document.onSaved = { [weak preview] in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { preview?.capture() }
+            }
             let view = SettingsView(document: document, session: session, preview: preview)
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 700),
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable],
