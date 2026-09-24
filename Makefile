@@ -26,7 +26,7 @@ ASSETS      := $(SRC)/Assets.xcassets
 FW_FLAGS    := -F build-support/Frameworks -F $(SDK)/System/Library/PrivateFrameworks
 FRAMEWORKS  := -framework DFRFoundation -framework MultitouchSupport \
                -framework CoreBrightness -framework CoreDisplay \
-               -framework Cocoa -framework Carbon -framework IOKit -framework ServiceManagement
+               -framework Cocoa -framework SwiftUI -framework Carbon -framework IOKit -framework ServiceManagement
 
 .PHONY: all universal run install clean
 all: $(APP)

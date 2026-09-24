@@ -3,7 +3,13 @@ import Foundation
 
 extension Data {
     func barItemDefinitions() -> [BarItemDefinition]? {
-           return try! JSONDecoder().decode([BarItemDefinition].self, from: utf8string!.stripComments().data(using: .utf8)!)
+        guard let json = utf8string?.stripComments().data(using: .utf8) else { return nil }
+        do {
+            return try JSONDecoder().decode([BarItemDefinition].self, from: json)
+        } catch {
+            NSLog("Stripe: invalid preset: \(error)")
+            return nil // the caller shows a "bad preset" button instead of crashing
+        }
     }
 }
 

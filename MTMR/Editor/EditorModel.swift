@@ -1,0 +1,442 @@
+//
+//  EditorModel.swift
+//  Stripe
+//
+//  The editor's document: a preset file as a tree of editable items. Every
+//  change is saved (debounced) and the bar reloads, so edits show up live.
+//
+
+import AppKit
+import Combine
+import SwiftUI
+
+/// One item in a preset. `fields` is the item's raw JSON object minus "items";
+/// a group's or popover's children live in `children`.
+final class EditorItem: ObservableObject, Identifiable {
+    let id = UUID()
+    @Published var fields: [String: JSONValue]
+    @Published var children: [EditorItem]?
+    weak var document: PresetDocument?
+
+    init(fields: [String: JSONValue], document: PresetDocument?) {
+        var fields = fields
+        let childValues = fields.removeValue(forKey: "items")?.array
+        self.fields = fields
+        self.document = document
+        children = childValues?.compactMap { $0.object }.map { EditorItem(fields: $0, document: document) }
+    }
+
+    var type: String { fields["type"]?.string ?? "unknown" }
+    var info: ItemTypeInfo { ItemCatalog.info(for: type) }
+    var isContainer: Bool { children != nil }
+
+    var align: String {
+        get { fields["align"]?.string ?? (type == "escape" ? "left" : "center") }
+        set { self[string: "align"] = newValue }
+    }
+
+    /// What the sidebar shows: the title if there is one; for scripts, what they
+    /// run (e.g. "status.sh ram"); otherwise the type's name.
+    var displayName: String {
+        if let title = fields["title"]?.string, !title.trimmingCharacters(in: .whitespaces).isEmpty {
+            return title
+        }
+        if let script = fields[path: "source.inline"]?.string ?? fields[path: "source.filePath"]?.string {
+            let firstLine = script.split(separator: "\n").first.map(String.init) ?? script
+            let words = firstLine.split(separator: " ").map { ($0 as NSString).lastPathComponent }
+            let summary = words.joined(separator: " ").trimmingCharacters(in: .whitespaces)
+            if !summary.isEmpty { return summary.count > 32 ? String(summary.prefix(31)) + "…" : summary }
+        }
+        return info.name
+    }
+
+    var displaySymbol: String { fields["symbol"]?.string ?? info.symbol }
+
+    var json: JSONValue {
+        var result = fields
+        if let children = children {
+            result["items"] = .array(children.map { $0.json })
+        }
+        return .object(result)
+    }
+
+    // Typed accessors for bindings. Setting nil/"" removes the key, so the
+    // saved JSON only contains what the user actually set.
+
+    subscript(string path: String) -> String? {
+        get { fields[path: path]?.string }
+        set {
+            fields[path: path] = (newValue?.isEmpty ?? true) ? nil : .string(newValue!)
+            changed()
+        }
+    }
+
+    subscript(number path: String) -> Double? {
+        get { fields[path: path]?.number }
+        set {
+            fields[path: path] = newValue.map { .number($0) }
+            changed()
+        }
+    }
+
+    subscript(bool path: String) -> Bool? {
+        get { fields[path: path]?.bool }
+        set {
+            fields[path: path] = newValue.map { .bool($0) }
+            changed()
+        }
+    }
+
+    func setRaw(_ path: String, _ value: JSONValue?) {
+        fields[path: path] = value
+        changed()
+    }
+
+    func replaceAll(with json: [String: JSONValue]) {
+        var json = json
+        let childValues = json.removeValue(forKey: "items")?.array
+        fields = json
+        if childValues != nil || children != nil {
+            children = childValues?.compactMap { $0.object }.map { EditorItem(fields: $0, document: document) } ?? []
+        }
+        changed()
+    }
+
+    func changed() {
+        objectWillChange.send()
+        document?.scheduleSave()
+    }
+}
+
+final class PresetDocument: ObservableObject {
+    @Published private(set) var path: String
+    @Published var items: [EditorItem] = []
+    @Published var loadError: String?
+    @Published var lastSaved: Date?
+
+    private var saveWork: DispatchWorkItem?
+    private var backedUpPaths = Set<String>()
+
+    init(path: String) {
+        self.path = path
+        load()
+    }
+
+    var displayName: String {
+        if path == standardConfigPath { return "All apps" }
+        let bundleId = (path as NSString).lastPathComponent.replacingOccurrences(of: ".json", with: "")
+        return PresetDocument.appName(for: bundleId) ?? bundleId
+    }
+
+    static func appName(for bundleId: String) -> String? {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) else { return nil }
+        return FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
+    }
+
+    func open(path: String) {
+        flushSave()
+        self.path = path
+        load()
+    }
+
+    func load() {
+        loadError = nil
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else {
+            items = []
+            return
+        }
+        do {
+            let root = try JSONValue.parse(text)
+            items = (root.array ?? []).compactMap { $0.object }.map { EditorItem(fields: $0, document: self) }
+        } catch {
+            items = []
+            loadError = "Couldn't read \((path as NSString).lastPathComponent): \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: Structure edits
+
+    func items(aligned align: String) -> [EditorItem] {
+        return items.filter { $0.align == align }
+    }
+
+    func add(_ item: EditorItem, to parent: EditorItem?) {
+        if let parent = parent {
+            parent.children = (parent.children ?? []) + [item]
+            parent.changed()
+        } else {
+            items.append(item)
+            scheduleSave()
+        }
+    }
+
+    func remove(_ item: EditorItem) {
+        if let index = items.firstIndex(where: { $0 === item }) {
+            items.remove(at: index)
+        } else {
+            for container in allContainers() {
+                if let index = container.children?.firstIndex(where: { $0 === item }) {
+                    container.children?.remove(at: index)
+                    container.objectWillChange.send()
+                }
+            }
+        }
+        scheduleSave()
+    }
+
+    func duplicate(_ item: EditorItem) {
+        guard let json = item.json.object else { return }
+        let copy = EditorItem(fields: json, document: self)
+        if let index = items.firstIndex(where: { $0 === item }) {
+            items.insert(copy, at: index + 1)
+        } else if let container = allContainers().first(where: { $0.children?.contains { $0 === item } ?? false }),
+                  let index = container.children?.firstIndex(where: { $0 === item }) {
+            container.children?.insert(copy, at: index + 1)
+            container.objectWillChange.send()
+        }
+        scheduleSave()
+    }
+
+    /// Reorders within one alignment section; offsets are relative to that section.
+    func move(inSection align: String, from source: IndexSet, to destination: Int) {
+        var section = items(aligned: align)
+        section.move(fromOffsets: source, toOffset: destination)
+        var iterator = section.makeIterator()
+        items = items.map { $0.align == align ? iterator.next()! : $0 }
+        scheduleSave()
+    }
+
+    func move(in container: EditorItem, from source: IndexSet, to destination: Int) {
+        container.children?.move(fromOffsets: source, toOffset: destination)
+        container.changed()
+    }
+
+    func find(_ id: UUID?) -> EditorItem? {
+        guard let id = id else { return nil }
+        func search(_ list: [EditorItem]) -> EditorItem? {
+            for item in list {
+                if item.id == id { return item }
+                if let found = search(item.children ?? []) { return found }
+            }
+            return nil
+        }
+        return search(items)
+    }
+
+    private func allContainers() -> [EditorItem] {
+        func collect(_ list: [EditorItem]) -> [EditorItem] {
+            return list.filter { $0.isContainer } + list.flatMap { collect($0.children ?? []) }
+        }
+        return collect(items)
+    }
+
+    // MARK: Saving
+
+    func scheduleSave() {
+        objectWillChange.send()
+        saveWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.save() }
+        saveWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+    }
+
+    func flushSave() {
+        if let work = saveWork, !work.isCancelled {
+            work.cancel()
+            save()
+        }
+    }
+
+    private func save() {
+        saveWork = nil
+        backUpOnce()
+        let text = JSONValue.array(items.map { $0.json }).pretty() + "\n"
+        do {
+            try FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
+                                                    withIntermediateDirectories: true)
+            // Not atomic on purpose: an atomic write replaces the file, which would
+            // detach the file watcher that reloads the bar on external edits.
+            try Data(text.utf8).write(to: URL(fileURLWithPath: path))
+            lastSaved = Date()
+            TouchBarController.shared.reloadAfterEdit()
+        } catch {
+            loadError = "Couldn't save: \(error.localizedDescription)"
+        }
+    }
+
+    /// Saving rewrites the file without comments, so keep the original once.
+    private func backUpOnce() {
+        guard !backedUpPaths.contains(path), FileManager.default.fileExists(atPath: path) else { return }
+        backedUpPaths.insert(path)
+        let backup = path + ".bak"
+        try? FileManager.default.removeItem(atPath: backup)
+        try? FileManager.default.copyItem(atPath: path, toPath: backup)
+    }
+}
+
+// MARK: - Item catalog
+
+enum FieldKind {
+    case text(placeholder: String)
+    case multiline
+    case number(placeholder: String)
+    case toggle
+    case choice([String])
+}
+
+struct FieldSpec: Identifiable {
+    let path: String
+    let label: String
+    let kind: FieldKind
+    var id: String { path }
+}
+
+struct ItemTypeInfo {
+    let type: String
+    let name: String
+    let symbol: String
+    let category: String
+    let defaults: [String: JSONValue]
+    let fields: [FieldSpec]
+    var isContainer: Bool { type == "group" || type == "popover" }
+}
+
+enum ItemCatalog {
+    static let categories = ["Buttons", "Keys", "Media", "Status", "System", "Sliders", "Containers", "Other"]
+
+    static let all: [ItemTypeInfo] = [
+        // Buttons
+        ItemTypeInfo(type: "staticButton", name: "Button", symbol: "rectangle.fill", category: "Buttons",
+                     defaults: ["title": .string("Button"), "style": .string("pill"), "background": .string("#3A3A3C")],
+                     fields: [FieldSpec(path: "title", label: "Title", kind: .text(placeholder: "Button"))]),
+        ItemTypeInfo(type: "shellScriptTitledButton", name: "Shell Script", symbol: "terminal", category: "Buttons",
+                     defaults: ["source": .object(["inline": .string("date +%H:%M:%S")]), "refreshInterval": .number(5)],
+                     fields: [FieldSpec(path: "source.inline", label: "Script (output becomes the title)", kind: .multiline),
+                              FieldSpec(path: "source.filePath", label: "…or script file", kind: .text(placeholder: "~/bin/status.sh")),
+                              FieldSpec(path: "refreshInterval", label: "Refresh every (s)", kind: .number(placeholder: "1800"))]),
+        ItemTypeInfo(type: "appleScriptTitledButton", name: "AppleScript", symbol: "applescript", category: "Buttons",
+                     defaults: ["source": .object(["inline": .string("return \"Hello\"")]), "refreshInterval": .number(30)],
+                     fields: [FieldSpec(path: "source.inline", label: "AppleScript (result becomes the title)", kind: .multiline),
+                              FieldSpec(path: "source.filePath", label: "…or script file", kind: .text(placeholder: "~/scripts/title.scpt")),
+                              FieldSpec(path: "refreshInterval", label: "Refresh every (s)", kind: .number(placeholder: "1800"))]),
+
+        // Keys
+        simple("escape", "Escape", "escape", "Keys"),
+        simple("delete", "Delete", "delete.left", "Keys"),
+        simple("brightnessUp", "Brightness Up", "sun.max", "Keys"),
+        simple("brightnessDown", "Brightness Down", "sun.min", "Keys"),
+        simple("illuminationUp", "Keyboard Light Up", "light.max", "Keys"),
+        simple("illuminationDown", "Keyboard Light Down", "light.min", "Keys"),
+
+        // Media
+        simple("previous", "Previous", "backward.fill", "Media"),
+        simple("play", "Play / Pause", "playpause.fill", "Media"),
+        simple("next", "Next", "forward.fill", "Media"),
+        simple("volumeDown", "Volume Down", "speaker.wave.1", "Media"),
+        simple("volumeUp", "Volume Up", "speaker.wave.3", "Media"),
+        simple("mute", "Mute", "speaker.slash", "Media"),
+        ItemTypeInfo(type: "music", name: "Now Playing", symbol: "music.note", category: "Media", defaults: [:],
+                     fields: [FieldSpec(path: "refreshInterval", label: "Refresh every (s)", kind: .number(placeholder: "5")),
+                              FieldSpec(path: "disableMarquee", label: "Disable scrolling text", kind: .toggle)]),
+
+        // Status
+        ItemTypeInfo(type: "timeButton", name: "Clock", symbol: "clock", category: "Status", defaults: ["formatTemplate": .string("HH:mm")],
+                     fields: [FieldSpec(path: "formatTemplate", label: "Format", kind: .text(placeholder: "HH:mm")),
+                              FieldSpec(path: "timeZone", label: "Time zone", kind: .text(placeholder: "e.g. UTC or Europe/London")),
+                              FieldSpec(path: "locale", label: "Locale", kind: .text(placeholder: "e.g. en_GB"))]),
+        ItemTypeInfo(type: "cpu", name: "CPU", symbol: "cpu", category: "Status", defaults: ["refreshInterval": .number(3)],
+                     fields: [FieldSpec(path: "refreshInterval", label: "Refresh every (s)", kind: .number(placeholder: "5"))]),
+        ItemTypeInfo(type: "network", name: "Network Speed", symbol: "arrow.up.arrow.down", category: "Status", defaults: ["flip": .bool(true)],
+                     fields: [FieldSpec(path: "flip", label: "Upload on top", kind: .toggle),
+                              FieldSpec(path: "units", label: "Units", kind: .choice(["dynamic", "B/s", "KB/s", "MB/s", "GB/s"]))]),
+        simple("battery", "Battery", "battery.75", "Status"),
+        ItemTypeInfo(type: "weather", name: "Weather", symbol: "cloud.sun", category: "Status", defaults: [:],
+                     fields: [FieldSpec(path: "api_key", label: "OpenWeatherMap API key", kind: .text(placeholder: "required")),
+                              FieldSpec(path: "units", label: "Units", kind: .choice(["metric", "imperial"])),
+                              FieldSpec(path: "icon_type", label: "Icons", kind: .choice(["text", "images"])),
+                              FieldSpec(path: "refreshInterval", label: "Refresh every (s)", kind: .number(placeholder: "1800"))]),
+        ItemTypeInfo(type: "currency", name: "Currency", symbol: "dollarsign.circle", category: "Status", defaults: ["from": .string("BTC"), "to": .string("USD")],
+                     fields: [FieldSpec(path: "from", label: "From", kind: .text(placeholder: "BTC")),
+                              FieldSpec(path: "to", label: "To", kind: .text(placeholder: "USD")),
+                              FieldSpec(path: "full", label: "Show full price", kind: .toggle),
+                              FieldSpec(path: "refreshInterval", label: "Refresh every (s)", kind: .number(placeholder: "600"))]),
+        ItemTypeInfo(type: "upnext", name: "Up Next (Calendar)", symbol: "calendar", category: "Status", defaults: [:],
+                     fields: [FieldSpec(path: "from", label: "From (hours from now)", kind: .number(placeholder: "0")),
+                              FieldSpec(path: "to", label: "To (hours from now)", kind: .number(placeholder: "12")),
+                              FieldSpec(path: "maxToShow", label: "Max events", kind: .number(placeholder: "3")),
+                              FieldSpec(path: "autoResize", label: "Auto-resize", kind: .toggle)]),
+        ItemTypeInfo(type: "pomodoro", name: "Pomodoro", symbol: "timer", category: "Status", defaults: [:],
+                     fields: [FieldSpec(path: "workTime", label: "Work (s)", kind: .number(placeholder: "1500")),
+                              FieldSpec(path: "restTime", label: "Rest (s)", kind: .number(placeholder: "600"))]),
+
+        // System
+        simple("dnd", "Do Not Disturb", "moon.fill", "System"),
+        simple("nightShift", "Night Shift", "sun.haze", "System"),
+        simple("darkMode", "Dark Mode", "circle.lefthalf.filled", "System"),
+        simple("inputsource", "Input Source", "globe", "System"),
+        simple("sleep", "Sleep", "powersleep", "System"),
+        simple("displaySleep", "Display Sleep", "display", "System"),
+        ItemTypeInfo(type: "dock", name: "Dock", symbol: "dock.rectangle", category: "System", defaults: [:],
+                     fields: [FieldSpec(path: "autoResize", label: "Auto-resize", kind: .toggle),
+                              FieldSpec(path: "filter", label: "Only apps matching (regex)", kind: .text(placeholder: "Safari|Mail"))]),
+
+        // Sliders
+        simple("volume", "Volume Slider", "slider.horizontal.3", "Sliders", defaults: ["width": .number(240)]),
+        ItemTypeInfo(type: "brightness", name: "Brightness Slider", symbol: "sun.max.fill", category: "Sliders", defaults: ["width": .number(240)],
+                     fields: [FieldSpec(path: "refreshInterval", label: "Refresh every (s)", kind: .number(placeholder: "0.5"))]),
+
+        // Containers
+        ItemTypeInfo(type: "popover", name: "Popover", symbol: "rectangle.expand.vertical", category: "Containers",
+                     defaults: ["symbol": .string("speaker.wave.2.fill"), "pressAndHold": .bool(true)],
+                     fields: [FieldSpec(path: "pressAndHold", label: "Press and hold to slide", kind: .toggle),
+                              FieldSpec(path: "autoClose", label: "Auto-close after (s)", kind: .number(placeholder: "never"))]),
+        ItemTypeInfo(type: "group", name: "Group", symbol: "folder", category: "Containers",
+                     defaults: ["symbol": .string("folder.fill")], fields: []),
+        simple("close", "Close (inside a group)", "chevron.left", "Containers"),
+
+        // Other
+        ItemTypeInfo(type: "swipe", name: "Swipe Gesture", symbol: "hand.draw", category: "Other",
+                     defaults: ["fingers": .number(2), "direction": .string("right")],
+                     fields: [FieldSpec(path: "fingers", label: "Fingers (2–4)", kind: .number(placeholder: "2")),
+                              FieldSpec(path: "direction", label: "Direction", kind: .choice(["left", "right"])),
+                              FieldSpec(path: "minOffset", label: "Min distance", kind: .number(placeholder: "0")),
+                              FieldSpec(path: "sourceBash.inline", label: "Shell command", kind: .multiline),
+                              FieldSpec(path: "sourceApple.inline", label: "AppleScript", kind: .multiline)]),
+        simple("exitTouchbar", "Exit Stripe Bar", "xmark.circle", "Other"),
+    ]
+
+    private static func simple(_ type: String, _ name: String, _ symbol: String, _ category: String,
+                               defaults: [String: JSONValue] = [:]) -> ItemTypeInfo {
+        return ItemTypeInfo(type: type, name: name, symbol: symbol, category: category, defaults: defaults, fields: [])
+    }
+
+    static func info(for type: String) -> ItemTypeInfo {
+        return all.first { $0.type == type }
+            ?? ItemTypeInfo(type: type, name: type, symbol: "questionmark.square", category: "Other", defaults: [:], fields: [])
+    }
+
+    static func newItem(_ type: String, align: String, document: PresetDocument) -> EditorItem {
+        let info = self.info(for: type)
+        var fields = info.defaults
+        fields["type"] = .string(type)
+        if align != "center" { fields["align"] = .string(align) }
+        if info.isContainer {
+            fields["items"] = .array([])
+        }
+        return EditorItem(fields: fields, document: document)
+    }
+
+    /// SF Symbols offered in the icon picker; any other symbol name can be typed in.
+    static let suggestedSymbols = [
+        "cpu", "memorychip", "internaldrive", "network", "wifi", "antenna.radiowaves.left.and.right",
+        "bolt.fill", "battery.100", "thermometer", "fanblades", "gauge", "chart.bar.fill",
+        "clock", "clock.arrow.circlepath", "timer", "calendar", "alarm", "hourglass",
+        "play.fill", "pause.fill", "playpause.fill", "backward.fill", "forward.fill", "music.note",
+        "speaker.wave.2.fill", "speaker.slash.fill", "mic.fill", "sun.max.fill", "moon.fill", "moon.zzz.fill",
+        "gearshape.fill", "slider.horizontal.3", "power", "lock.fill", "arrow.clockwise", "arrow.triangle.2.circlepath",
+        "terminal", "chevron.left.forwardslash.chevron.right", "hammer.fill", "wrench.and.screwdriver.fill", "shippingbox.fill", "server.rack",
+        "cup.and.saucer.fill", "bell.fill", "envelope.fill", "message.fill", "star.fill", "heart.fill",
+        "checkmark.circle.fill", "xmark.circle.fill", "exclamationmark.triangle.fill", "info.circle.fill", "questionmark.circle", "plus.circle.fill",
+        "house.fill", "folder.fill", "doc.fill", "trash.fill", "camera.fill", "globe",
+    ]
+}

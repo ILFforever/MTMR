@@ -272,6 +272,16 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         loadPreset(path: perAppPresetPath ?? path)
     }
 
+    /// Set when the editor saves, so the file watcher doesn't reload a second time.
+    private(set) var ignoreFileWatcherUntil = Date.distantPast
+
+    /// Reloads the bar after the editor saved a preset (items.json or a per-app one).
+    func reloadAfterEdit() {
+        ignoreFileWatcherUntil = Date().addingTimeInterval(1)
+        currentPresetPath = "" // force a reload even if the same preset is showing
+        reloadPreset(path: lastPresetPath)
+    }
+
     private func loadPreset(path: String) {
         currentPresetPath = path
         let items = path.fileData?.barItemDefinitions() ?? [BarItemDefinition(type: .staticButton(title: "bad preset"), actions: [], action: .none, legacyLongAction: .none, additionalParameters: [:])]

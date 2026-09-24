@@ -43,6 +43,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         createMenu()
     }
 
+    @objc func openSettings(_: Any?) {
+        SettingsWindowController.shared.show()
+    }
+
     @objc func openPreferences(_: Any?) {
         let task = Process()
         task.launchPath = "/usr/bin/open"
@@ -124,7 +128,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let settingSeparator = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
         settingSeparator.isEnabled = false
 
-        menu.addItem(withTitle: "Preferences", action: #selector(openPreferences(_:)), keyEquivalent: ",")
+        menu.addItem(withTitle: "Settings…", action: #selector(openSettings(_:)), keyEquivalent: ",")
+        menu.addItem(withTitle: "Edit JSON…", action: #selector(openPreferences(_:)), keyEquivalent: "")
         menu.addItem(withTitle: "Open preset", action: #selector(openPreset(_:)), keyEquivalent: "O")
 
         menu.addItem(NSMenuItem.separator())
@@ -147,8 +152,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         fileSystemSource = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: .write, queue: DispatchQueue(label: "DefaultConfigChanged"))
 
         fileSystemSource?.setEventHandler(handler: {
-            print("Config changed, reloading...")
             DispatchQueue.main.async {
+                guard Date() > TouchBarController.shared.ignoreFileWatcherUntil else { return }
                 TouchBarController.shared.reloadPreset(path: file.path)
             }
         })

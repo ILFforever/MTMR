@@ -10,7 +10,8 @@
 //    swift -e 'import Foundation; DistributedNotificationCenter.default().postNotificationName(.init("com.ilfforever.stripe.debug"), object: "popover", deliverImmediately: true)'
 //
 //  Commands: "popover" (expand the first popover), "group" (open the first group),
-//  "dismiss" (return to the main bar).
+//  "dismiss" (return to the main bar), "settings" (open the editor window),
+//  "select N" (select the Nth top-level item in the editor).
 //
 
 import Cocoa
@@ -34,6 +35,14 @@ enum DebugHooks {
             (items.first { $0 is PopoverBarItem } as? PopoverBarItem)?.expand()
         case "group":
             (items.first { $0 is GroupBarItem } as? GroupBarItem)?.showPopover(nil)
+        case "settings":
+            SettingsWindowController.shared.show()
+        case let select where select.hasPrefix("select "):
+            // "select 3" selects the 4th top-level item in the editor.
+            let editor = SettingsWindowController.shared
+            if let index = Int(select.dropFirst(7)), editor.document.items.indices.contains(index) {
+                editor.session.selection = editor.document.items[index].id
+            }
         case "dismiss":
             for case let item as PopoverBarItem in items {
                 item.collapse()
