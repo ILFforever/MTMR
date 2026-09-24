@@ -123,18 +123,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        // Icons on the main rows, like macOS 26's own menus (which add one to Quit automatically).
-        func icon(_ symbol: String) -> NSImage? { NSImage(systemSymbolName: symbol, accessibilityDescription: nil) }
-
-        menu.addItem(withTitle: "\(Brand.name) Settings…", action: #selector(openSettings(_:)), keyEquivalent: ",").image = icon("gearshape")
+        // No icons: macOS 26 adds one to Quit by itself, and that's enough.
+        menu.addItem(withTitle: "\(Brand.name) Settings…", action: #selector(openSettings(_:)), keyEquivalent: ",")
         let openAtLogin = NSMenuItem(title: "Open at Login", action: #selector(toggleStartAtLogin(_:)), keyEquivalent: "")
         openAtLogin.state = LaunchAtLoginController().launchAtLogin ? .on : .off
-        openAtLogin.image = icon("power")
         menu.addItem(openAtLogin)
 
         if !AccessibilityPermission.isGranted {
             let allow = NSMenuItem(title: "Allow Accessibility for Media Keys…", action: #selector(requestAccessibility(_:)), keyEquivalent: "")
-            allow.image = icon("exclamationmark.triangle")
             menu.addItem(allow)
         }
 
@@ -142,9 +138,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let app = NSWorkspace.shared.frontmostApplication, app.bundleIdentifier != Bundle.main.bundleIdentifier,
            let name = app.localizedName {
             menu.addItem(.separator())
-            let hide = NSMenuItem(title: "Hide \(Brand.name) in \(name)", action: #selector(toggleBlackListedApp(_:)), keyEquivalent: "")
-            hide.state = isBlockedApp ? .on : .off
-            hide.image = icon("eye.slash")
+            let hide = NSMenuItem(title: "Hide \(Brand.name) for \u{201C}\(name)\u{201D}", action: #selector(toggleBlackListedApp(_:)), keyEquivalent: "")
+            // Read the list itself; isBlockedApp is only refreshed on app switches.
+            hide.state = TouchBarController.shared.blacklistAppIdentifiers.contains(app.bundleIdentifier ?? "") ? .on : .off
             menu.addItem(hide)
         }
 
@@ -159,14 +155,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         gestures.state = AppSettings.multitouchGestures ? .on : .off
         let optionsItem = menu.addItem(withTitle: "Options", action: nil, keyEquivalent: "")
         optionsItem.submenu = options
-        optionsItem.image = icon("slider.horizontal.3")
 
         let advanced = NSMenu()
         advanced.addItem(withTitle: "Edit JSON…", action: #selector(openPreferences(_:)), keyEquivalent: "")
         advanced.addItem(withTitle: "Open Preset File…", action: #selector(openPreset(_:)), keyEquivalent: "")
         let advancedItem = menu.addItem(withTitle: "Advanced", action: nil, keyEquivalent: "")
         advancedItem.submenu = advanced
-        advancedItem.image = icon("wrench.and.screwdriver")
 
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit \(Brand.name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
