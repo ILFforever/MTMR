@@ -58,7 +58,7 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
         multiClick.isTripleClickEnabled = false
 
         reinstallButton()
-        button.attributedTitle = attributedTitle
+        button.attributedTitle = displayedTitle
     }
 
     required init?(coder _: NSCoder) {
@@ -77,6 +77,21 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
         }
     }
 
+    var style = ItemStyle() {
+        didSet {
+            if let symbolImage = style.symbolImage {
+                image = symbolImage
+            }
+            reinstallButton()
+            button.attributedTitle = displayedTitle
+        }
+    }
+
+    /// The title as drawn: `attributedTitle` with the item's style applied.
+    var displayedTitle: NSAttributedString {
+        return style.apply(to: attributedTitle)
+    }
+
     var title: String {
         get {
             return attributedTitle.string
@@ -89,7 +104,7 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
     var attributedTitle: NSAttributedString {
         didSet {
             button?.imagePosition = attributedTitle.length > 0 ? .imageLeading : .imageOnly
-            button?.attributedTitle = attributedTitle
+            button?.attributedTitle = displayedTitle
         }
     }
 
@@ -104,7 +119,16 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
         let image = button.image
         let cell = CustomButtonCell(parentItem: self)
         button.cell = cell
-        if let color = backgroundColor {
+        button.wantsLayer = style.cornerRadius != nil
+        button.layer?.cornerRadius = style.cornerRadius ?? 0
+        button.layer?.backgroundColor = nil
+        if let color = backgroundColor, let radius = style.cornerRadius {
+            // Custom-radius background: draw it on the layer, not with a bezel.
+            button.isBordered = false
+            button.bezelStyle = .inline
+            button.layer?.backgroundColor = color.cgColor
+            button.layer?.cornerRadius = radius
+        } else if let color = backgroundColor {
             cell.isBordered = true
             button.bezelColor = color
             button.bezelStyle = .rounded
@@ -187,7 +211,7 @@ class CustomButtonCell: NSButtonCell {
             if flag {
                 setAttributedTitle(attributedTitle, withColor: .lightGray)
             } else if let parentItem = self.parentItem {
-                attributedTitle = parentItem.attributedTitle
+                attributedTitle = parentItem.displayedTitle
             }
         }
     }

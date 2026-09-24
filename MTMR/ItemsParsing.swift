@@ -660,6 +660,7 @@ enum GeneralParameter {
     case background(_: NSColor)
     case title(_: String)
     case matchAppId(_: String)
+    case style(_: ItemStyle)
 }
 
 struct GeneralParameters: Decodable {
@@ -673,11 +674,14 @@ struct GeneralParameters: Decodable {
         case background
         case title
         case matchAppId
+        case style // stands for all ItemStyle keys, which are decoded together
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         var result: [GeneralParameters.CodingKeys: GeneralParameter] = [:]
+
+        result[.style] = .style(try ItemStyle(from: decoder))
 
         if let value = try container.decodeIfPresent(CGFloat.self, forKey: .width) {
             result[.width] = .width(value)

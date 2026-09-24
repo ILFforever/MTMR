@@ -423,6 +423,16 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         if case let .image(source)? = item.additionalParameters[.image], let item = barItem as? CustomButtonTouchBarItem {
             item.image = source.image
         }
+        if case let .style(style)? = item.additionalParameters[.style] {
+            if let item = barItem as? CustomButtonTouchBarItem {
+                item.style = style
+            } else if let item = barItem as? GroupBarItem, let symbolImage = style.symbolImage {
+                item.collapsedRepresentationImage = symbolImage
+            }
+        }
+        if case let .image(source)? = item.additionalParameters[.image], let item = barItem as? GroupBarItem {
+            item.collapsedRepresentationImage = source.image
+        }
         if case let .title(value)? = item.additionalParameters[.title] {
             if let item = barItem as? GroupBarItem {
                 item.collapsedRepresentationLabel = value

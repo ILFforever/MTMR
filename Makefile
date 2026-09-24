@@ -8,7 +8,7 @@
 
 APP_NAME    := Stripe
 BUNDLE_ID   ?= com.ilfforever.stripe
-MIN_MACOS   := 11.0
+MIN_MACOS   := 12.0
 ARCHS       ?= $(shell uname -m)
 
 BUILD       := build

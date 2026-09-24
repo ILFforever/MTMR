@@ -133,7 +133,7 @@ class NetworkBarItem: CustomButtonTouchBarItem, Widget {
         appendString.append(NSMutableAttributedString(
             string: newStr ? "\n↑" : "↑",
             attributes: [
-                NSAttributedString.Key.foregroundColor: NSColor.blue,
+                NSAttributedString.Key.foregroundColor: NSColor.systemBlue,
                 NSAttributedString.Key.font: titleFont,
                 ]))
         
@@ -148,7 +148,7 @@ class NetworkBarItem: CustomButtonTouchBarItem, Widget {
         appendString.append(NSMutableAttributedString(
             string: newStr ? "\n↓" : "↓",
             attributes: [
-                NSAttributedString.Key.foregroundColor: NSColor.red,
+                NSAttributedString.Key.foregroundColor: NSColor.systemRed,
                 NSAttributedString.Key.font: titleFont,
                 ]))
             
@@ -160,7 +160,7 @@ class NetworkBarItem: CustomButtonTouchBarItem, Widget {
     }
     
     func setTitle(up: String, down: String) {
-        let titleFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: NSFont.Weight.light)
+        let titleFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: NSFont.Weight.regular)
         
         let newTitle: NSMutableAttributedString = NSMutableAttributedString(string: "")
         
@@ -173,6 +173,16 @@ class NetworkBarItem: CustomButtonTouchBarItem, Widget {
         }
         
         
+        // Two lines must fit the 30pt bar: pin the line height instead of using
+        // the font's default leading, which pushes the second line off the bottom.
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.minimumLineHeight = 13
+        paragraph.maximumLineHeight = 13
+        paragraph.alignment = .left
+        let range = NSRange(location: 0, length: newTitle.length)
+        newTitle.addAttribute(.paragraphStyle, value: paragraph, range: range)
+        newTitle.addAttribute(.baselineOffset, value: -1, range: range)
+
         self.attributedTitle = newTitle
     }
 }
