@@ -1,62 +1,117 @@
-# My touchbar. My rules. [![GitHub release](https://img.shields.io/github/release/toxblh/MTMR.svg)](https://github.com/Toxblh/MTMR/releases) [![license](https://img.shields.io/github/license/Toxblh/MTMR.svg)](https://github.com/Toxblh/MTMR/blob/master/LICENSE) ![minimal system requirements](https://img.shields.io/badge/required-macOS%2010.12.2-blue.svg) ![travis](https://travis-ci.org/Toxblh/MTMR.svg?branch=master)
+# Stripe
 
-<img src="Resources/logo.png" align="right"
-     title="MTMR by Toxblh" width="110" height="110">
+_A Touch Bar customizer for MacBook Pro, forked from [MTMR](https://github.com/Toxblh/MTMR)._
 
-_The TouchBar Customization App for your MacBook Pro_
+Stripe replaces your Touch Bar with a bar you design: buttons, sliders, widgets and scripts, laid out in JSON or in a drag-and-drop Settings window. It aims to look and behave like Apple's own Touch Bar controls.
 
-My idea is to create a platform for creating plugins to customize the TouchBar. I very much like BTT and having a full custom TouchBar (my BTT preset), and I wanted to create it.
+![license](https://img.shields.io/github/license/ILFforever/Stripe.svg) ![minimal system requirements](https://img.shields.io/badge/required-macOS%2012-blue.svg)
 
-**Share your presets [here](https://github.com/Toxblh/MTMR-presets)**
+## What's new compared with MTMR
 
-**Visial editor for MTMR** -> [MTMR Designer](https://josmanvis.github.io/mtmr-designer)</br>
-All thanks to [@josetwentyfour](https://github.com/josmanvis)
+- **Visual settings editor.** Drag items around a live preview of the bar and edit each one in an inspector. You don't need to touch the JSON.
+- **Popovers.** A collapsible item such as a volume key opens its controls in place. Press and hold, then slide, to adjust without opening it.
+- **Per-item styling.** SF Symbols, font size and weight, text and icon colors, and rounded "pill" backgrounds.
+- **Conditional items.** Show an item only for certain apps, at certain times of day, or while a shell command succeeds.
+- **Per-app presets.** Give any app its own bar.
+- **Redesigned widgets.** Battery (drawn icon, charging animation, time remaining), plus a mute toggle and volume icon that show the current level.
+- **Builds without Xcode.** Only the Command Line Tools are needed. Sparkle auto-updates are removed.
 
-<p align="center">
-  <img src="./Resources/aaaaa-acc6-17fee7572ed0.png" alt="Mackbook with touchbar" width="800">
-</p>
-
-<p align="center">
-<a href="https://discord.gg/CmNcDuQ"><img height="20px" src="https://assets-global.website-files.com/6257adef93867e50d84d30e2/62fddf0fde45a8baedcc7ee5_847541504914fd33810e70a0ea73177e%20(2)-1.png"> Discord</a>
-<a href="https://t.me/joinchat/AmVYGg8vW38c13_3MxdE_g"><img height="20px" src="https://telegram.org/img/t_logo.png" /> Telegram</a>
-</p>
-
-<p align="center"><a href="https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=WUAAG2HH58WE4" title="Donate via Paypal"><img height="36px" src="Resources/support_paypal.svg" alt="PayPal donate button" /></a>
-<a href="https://www.buymeacoffee.com/toxblh" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" height="36px" ></a>
-<a href="https://www.patreon.com/bePatron?u=9900748"><img height="36px"  src="https://c5.patreon.com/external/logo/become_a_patron_button.png" srcset="https://c5.patreon.com/external/logo/become_a_patron_button@2x.png 2x"></a>
-<a href="https://www.producthunt.com/posts/my-touchbar-my-rules-mtmr">
-    <img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=my-touchbar-my-rules-mtmr&theme=light" alt="My TouchBar My Rules (MTMR)" height="36px" style="max-width:100%">
-</a></p>
+Existing MTMR presets still load.
 
 ## Installation
 
-- Download latest [release](https://github.com/Toxblh/MTMR/releases) (.dmg) from github
-- Or via Homebrew `brew install --cask mtmr`
-- [Dario Prski](https://medium.com/@urdigitalpulse) has written a [fantastic article on medium](https://medium.com/@urdigitalpulse/customise-your-macbook-pro-touch-bar-966998e606b5) that goes into more detail on installing MTMR
+There are no prebuilt releases yet, so build from source (details in [DEVELOPING.md](DEVELOPING.md)):
 
-**On first install** you need to allow access for MTMR in Accessibility otherwise buttons like <kbd>Esc</kbd>, <kbd>Volume</kbd>, <kbd>Brightness</kbd> and other system keys won't work.
+```sh
+xcode-select --install                   # Command Line Tools, if you don't have them
+build-support/make-signing-identity.sh   # once per Mac; keeps Accessibility access across rebuilds
+make install                             # builds Stripe.app, copies it to /Applications and launches it
+```
 
-<p align="center">
-<img width="450" alt="screenshot 2019-02-24 at 23 19 20" src="https://user-images.githubusercontent.com/2198153/53307057-2b078200-388c-11e9-8212-8c2b1aff0aa6.png">
-</p>
+**On first launch**, allow Stripe in **System Settings → Privacy & Security → Accessibility**. Without it, <kbd>Esc</kbd>, volume, brightness and other simulated keys won't work. The menu-bar menu shows **Allow Accessibility for Media Keys…** until access is granted.
 
-<p align="center">
-🍏→ System Preferences → Security and Privacy → tab Privacy → Accessibility → MTMR
-</p>
+## Using Stripe
 
-## Examples
+Stripe lives in the menu bar. From its menu you can:
 
-[MTMR presets](https://github.com/Toxblh/MTMR-presets)
-
-<p align="center">
-  <img src="./Resources/Artboard.png" alt="Presets for touchbar" width="800">
-</p>
+- open **Stripe Settings…** (<kbd>⌘,</kbd>), the visual editor
+- turn on **Open at Login**
+- choose **Hide Stripe for “App”** to give the frontmost app its normal Touch Bar back
+- under **Options**, toggle haptic feedback, the Control Strip, and volume and brightness gestures
+- under **Advanced**, choose **Edit JSON…** or **Open Preset File…**
 
 ## Customization
 
-MTMR preferences are stored in `~/Library/Application\ Support/MTMR/items.json`.
+The main preset lives in `~/Library/Application Support/Stripe/items.json`. The Settings window edits this file, and you can also edit it by hand. Stripe reloads the bar when the file changes.
 
-The pre-installed configuration contains less or more than you'll probably want, try to configure:
+### Per-app presets
+
+Put a preset at `~/Library/Application Support/Stripe/apps/<bundle-id>.json` (for example `apps/com.apple.Safari.json`). Stripe switches to it while that app is in front and switches back to the main preset afterwards.
+
+### Styling
+
+Any button-based item accepts these keys:
+
+```js
+{
+  "type": "cpu",
+  "symbol": "cpu",            // SF Symbol name used as the icon
+  "iconColor": "#34C759",
+  "fontSize": 13,
+  "fontWeight": "semibold",
+  "textColor": "orange",      // named color or hex
+  "monospacedDigits": true,
+  "cornerRadius": 8           // or "style": "pill"
+}
+```
+
+### Conditions (`when`)
+
+Every check you list has to pass for the item to show:
+
+```js
+"when": {
+  "app": "Safari|Chrome",       // regex on the frontmost app's bundle ID or name
+  "notApp": "Finder",           // hide while a matching app is in front
+  "time": "09:00-18:00",        // local time window; can wrap past midnight
+  "script": "pgrep -q docker",  // show while this shell command exits 0
+  "every": 10                   // seconds between script checks (default 10)
+}
+```
+
+The older `matchAppId` key still works and behaves like `"app"`.
+
+### Popovers
+
+```js
+{
+  "type": "popover",
+  "symbol": "speaker.wave.2.fill",
+  "items": [ { "type": "volume" }, { "type": "mute" } ],
+  "pressAndHold": true,  // hold and slide to adjust the first item
+  "autoClose": 4,        // optional: collapse after this many idle seconds
+  "liveIcon": true       // with a volume slider first, the icon shows the current level
+}
+```
+
+The controls open on the same side of the bar as the button. Tap ✕ or any empty part of the bar to close them.
+
+### Battery
+
+```js
+{
+  "type": "battery",
+  "showIcon": true,
+  "showPercentage": true,
+  "percentInside": false,  // draw the percentage inside the icon, as on iPhone
+  "showTime": false,
+  "animate": true,         // charging animation
+  "lowThreshold": 20,
+  "tapToCycle": true       // tap to switch to time remaining and back
+}
+```
+
+Press and hold the battery item to open Battery settings.
 
 ## Built-in button types:
 
@@ -109,7 +164,7 @@ The pre-installed configuration contains less or more than you'll probably want,
 
 ## Gestures
 
-By default you can enable basic gestures from application menu (status bar -> MTMR icon -> Volume/Brightness gestures):
+Turn on basic gestures from the menu bar (Stripe → Options → Volume & Brightness Gestures):
 - two finger slide: change you Volume
 - three finger slide: change you Brightness
 
@@ -153,7 +208,7 @@ You may create as many `swipe` objects in the preset as you want.
     "type": "appleScriptTitledButton",
     "refreshInterval": 60, //optional
     "source": {
-      "filePath": "~/Library/Application Support/MTMR/iTunes.nowPlaying.scpt",
+      "filePath": "~/Library/Application Support/Stripe/iTunes.nowPlaying.scpt",
       // or
       "inline": "tell application \"Finder\"\rif not (exists window 1) then\rmake new Finder window\rset target of front window to path to home folder as string\rend if\ractivate\rend tell",
       // or
@@ -285,7 +340,7 @@ To close a group, use the button:
 > Provider: https://openweathermap.org \
 > Note: Register at https://openweathermap.org to get your API key \
 > Note: Wait for 20 minutes or so for Openweathermap to activate your API key.\
-> Note: Enable MTMR in "Location Services" in the "Security & Privacy" System Preferences pane
+> Note: Allow Stripe in System Settings → Privacy & Security → Location Services
 
 ```js
   "type": "weather",
@@ -298,7 +353,7 @@ To close a group, use the button:
 #### `yandexWeather` (experimental)
 
 > Provider: https://yandex.ru/pogoda. One click to open up weather forecast in your browser. \
-> Note: Enable MTMR in "Location Services" in the "Security & Privacy" System Preferences pane
+> Note: Allow Stripe in System Settings → Privacy & Security → Location Services
 
 ```js
   "type": "yandexWeather",
@@ -493,7 +548,7 @@ by using background with color "#000000" and bordered == false you can create bu
   }
 ```
 
-- `matchAppId` displays the button only when active app's id matches given regexp
+- `matchAppId` displays the button only when the active app's ID matches the given regex (prefer `"when": { "app": … }`)
 
 ```json
   "matchAppId": "Safari"
@@ -502,22 +557,28 @@ by using background with color "#000000" and bordered == false you can create bu
 
 ## Troubleshooting
 
-#### If you can't open preferences:
-- Opening another program which can't edit text
-    1. Open Terminal.app
-    2. Put `open -a TextEdit ~/Library/Application\ Support/MTMR/items.json` command and press <kbd>Enter</kbd>
+#### Buttons or gestures don't work
 
+This usually means Stripe has lost Accessibility access, for example after an ad-hoc-signed rebuild. In **System Settings → Privacy & Security → Accessibility**, remove Stripe and add it again. Running `build-support/make-signing-identity.sh` once stops this from happening again after rebuilds.
 
-#### Buttons or gestures doesn't work:
-- "After the last update my mtmr is not working anymore!"
-- "Buttons sometimes do not trigger action"
-- "ESC don't work"
-- "Gestures don't work"
+#### The Settings window won't open
 
-Re-tick or check a tick for access 🍏→ System Preferences → Security and Privacy → tab Privacy → Accessibility → MTMR
+Choose **Advanced → Edit JSON…** from the menu, or run:
+
+```sh
+open -a TextEdit ~/Library/Application\ Support/Stripe/items.json
+```
+
+## Developing
+
+See [DEVELOPING.md](DEVELOPING.md) for the build, code signing, debug hooks and code conventions.
 
 ## Credits
 
-Built by [@Toxblh](https://patreon.com/toxblh) and [@ReDetection](http://patreon.com/ReDetection).
+Stripe is a fork of **[MTMR: My TouchBar. My Rules.](https://github.com/Toxblh/MTMR)** and wouldn't exist without it. It carries on under MTMR's [license](LICENSE).
 
-[![Analytics](https://ga-beacon.appspot.com/UA-96373624-2/mtmr?pixel)](https://github.com/igrigorik/ga-beacon)
+- **[@Toxblh](https://github.com/Toxblh)** and **[@ReDetection](https://github.com/ReDetection)** created and maintained MTMR. You can support them on Patreon ([Toxblh](https://patreon.com/toxblh), [ReDetection](https://patreon.com/ReDetection)) or [Buy Me a Coffee](https://www.buymeacoffee.com/toxblh).
+- **Everyone who contributed to MTMR.** Most of the widgets, actions and preset format in Stripe come from their work. See the [full contributor list](https://github.com/Toxblh/MTMR/graphs/contributors).
+- **[@josmanvis](https://github.com/josmanvis)** built [MTMR Designer](https://josmanvis.github.io/mtmr-designer), the first visual editor for MTMR presets.
+- **[Dario Prski](https://medium.com/@urdigitalpulse)** wrote the [guide to customising the Touch Bar](https://medium.com/@urdigitalpulse/customise-your-macbook-pro-touch-bar-966998e606b5) with MTMR.
+- **Everyone who shared presets** in [MTMR-presets](https://github.com/Toxblh/MTMR-presets). They work in Stripe too.
