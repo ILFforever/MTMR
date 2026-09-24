@@ -51,6 +51,8 @@ extension ItemType {
             return "com.toxblh.mtmr.music."
         case .group(items: _):
             return "com.toxblh.mtmr.groupBar."
+        case .popover:
+            return "com.ilfforever.stripe.popover."
         case .nightShift:
             return "com.toxblh.mtmr.nightShift."
         case .dnd:
@@ -305,7 +307,24 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         DFRElementSetControlStripPresenceForIdentifier(.controlStripItem, showMtmrButtonOnControlStrip)
     }
 
-    @objc private func presentTouchBar() {
+    /// Shows `identifiers` (vended by `delegate`) in place of the main bar. Only one
+    /// system-modal bar can be shown, so sub-bars take over the main one.
+    func showSubBar(identifiers: [NSTouchBarItem.Identifier], delegate: NSTouchBarDelegate) {
+        touchBar.delegate = delegate
+        touchBar.defaultItemIdentifiers = []
+        touchBar.defaultItemIdentifiers = identifiers
+        presentTouchBar()
+    }
+
+    /// Returns from a sub-bar to the main bar.
+    func restoreMainBar() {
+        touchBar.delegate = self
+        touchBar.defaultItemIdentifiers = []
+        touchBar.defaultItemIdentifiers = [basicViewIdentifier]
+        presentTouchBar()
+    }
+
+    @objc func presentTouchBar() {
         if AppSettings.showControlStripState {
             presentSystemModal(touchBar, systemTrayItemIdentifier: .controlStripItem)
         } else {
@@ -383,6 +402,8 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             barItem = MusicBarItem(identifier: identifier, interval: interval, disableMarquee: disableMarquee)
         case let .group(items: items):
             barItem = GroupBarItem(identifier: identifier, items: items)
+        case let .popover(items: items, pressAndHold: pressAndHold, autoClose: autoClose):
+            barItem = PopoverBarItem(identifier: identifier, items: items, pressAndHold: pressAndHold, autoClose: autoClose)
         case .nightShift:
             barItem = NightShiftBarItem(identifier: identifier)
         case .dnd:
@@ -426,15 +447,15 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         if case let .style(style)? = item.additionalParameters[.style] {
             if let item = barItem as? CustomButtonTouchBarItem {
                 item.style = style
-            } else if let item = barItem as? GroupBarItem, let symbolImage = style.symbolImage {
+            } else if let item = barItem as? NSPopoverTouchBarItem, let symbolImage = style.symbolImage {
                 item.collapsedRepresentationImage = symbolImage
             }
         }
-        if case let .image(source)? = item.additionalParameters[.image], let item = barItem as? GroupBarItem {
+        if case let .image(source)? = item.additionalParameters[.image], let item = barItem as? NSPopoverTouchBarItem {
             item.collapsedRepresentationImage = source.image
         }
         if case let .title(value)? = item.additionalParameters[.title] {
-            if let item = barItem as? GroupBarItem {
+            if let item = barItem as? NSPopoverTouchBarItem {
                 item.collapsedRepresentationLabel = value
             } else if let item = barItem as? CustomButtonTouchBarItem {
                 item.title = value

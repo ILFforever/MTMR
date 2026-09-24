@@ -271,6 +271,7 @@ enum ItemType: Decodable {
     case inputsource
     case music(interval: Double, disableMarquee: Bool)
     case group(items: [BarItemDefinition])
+    case popover(items: [BarItemDefinition], pressAndHold: Bool, autoClose: Double?)
     case nightShift
     case dnd
     case pomodoro(workTime: Double, restTime: Double)
@@ -310,6 +311,8 @@ enum ItemType: Decodable {
         case fingers
         case minOffset
         case maxToShow
+        case pressAndHold
+        case autoClose
     }
 
     enum ItemTypeRaw: String, Decodable {
@@ -328,6 +331,7 @@ enum ItemType: Decodable {
         case inputsource
         case music
         case group
+        case popover
         case nightShift
         case dnd
         case pomodoro
@@ -410,6 +414,12 @@ enum ItemType: Decodable {
         case .group:
             let items = try container.decode([BarItemDefinition].self, forKey: .items)
             self = .group(items: items)
+
+        case .popover:
+            let items = try container.decode([BarItemDefinition].self, forKey: .items)
+            let pressAndHold = try container.decodeIfPresent(Bool.self, forKey: .pressAndHold) ?? false
+            let autoClose = try container.decodeIfPresent(Double.self, forKey: .autoClose)
+            self = .popover(items: items, pressAndHold: pressAndHold, autoClose: autoClose)
 
         case .nightShift:
             self = .nightShift

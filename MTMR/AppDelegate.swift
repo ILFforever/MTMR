@@ -25,6 +25,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         createMenu()
 
         reloadOnDefaultConfigChanged()
+        DebugHooks.installIfRequested()
 
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(updateIsBlockedApp), name: NSWorkspace.didLaunchApplicationNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(updateIsBlockedApp), name: NSWorkspace.didTerminateApplicationNotification, object: nil)

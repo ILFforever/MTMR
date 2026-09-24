@@ -3,7 +3,7 @@ import AVFoundation
 import Cocoa
 import CoreAudio
 
-class VolumeViewController: NSCustomTouchBarItem {
+class VolumeViewController: NSCustomTouchBarItem, SlidableItem {
     private(set) var sliderItem: CustomSlider!
     private var currentDeviceId: AudioObjectID = AudioObjectID(0)
 
@@ -21,7 +21,7 @@ class VolumeViewController: NSCustomTouchBarItem {
         sliderItem.maxValue = 100.0
         sliderItem.floatValue = getInputGain() * 100
 
-        view = sliderItem
+        view = image == nil ? sliderItem.withEndIcons(min: "speaker.fill", max: "speaker.wave.3.fill") : sliderItem
         
         currentDeviceId = defaultDeviceID
         self.addAudioRouteChangedListener()
@@ -79,6 +79,16 @@ class VolumeViewController: NSCustomTouchBarItem {
 
     deinit {
         sliderItem.unbind(NSBindingName.value)
+    }
+
+    /// 0...1, used by press-and-hold sliding on a collapsed popover.
+    var sliderValue: Double {
+        get { return Double(getInputGain()) }
+        set {
+            let clamped = min(max(newValue, 0), 1)
+            _ = setInputGain(Float32(clamped))
+            sliderItem.floatValue = Float(clamped * 100)
+        }
     }
 
     @objc func sliderValueChanged(_ sender: Any) {
