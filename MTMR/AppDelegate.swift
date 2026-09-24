@@ -7,22 +7,16 @@
 //
 
 import Cocoa
-import Sparkle
 
-@NSApplicationMain
-class AppDelegate: NSObject, NSApplicationDelegate {
-    let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+    let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength) // the STR mark is wider than square
     var isBlockedApp: Bool = false
 
     private var fileSystemSource: DispatchSourceFileSystemObject?
 
     func applicationDidFinishLaunching(_: Notification) {
-        // Configure Sparkle
-        SUUpdater.shared().automaticallyDownloadsUpdates = false
-        SUUpdater.shared().automaticallyChecksForUpdates = true
-        SUUpdater.shared().checkForUpdatesInBackground()
-
-        AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeRetainedValue() as NSString: true] as NSDictionary)
+        // Checked quietly; the prompt comes only when a key-simulating button is used.
+        NSLog("Stripe: Accessibility permission \(AccessibilityPermission.isGranted ? "granted" : "not granted yet")")
 
         TouchBarController.shared.setupControlStripPresence()
 
@@ -32,6 +26,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         createMenu()
 
         reloadOnDefaultConfigChanged()
+        DebugHooks.installIfRequested()
 
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(updateIsBlockedApp), name: NSWorkspace.didLaunchApplicationNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(updateIsBlockedApp), name: NSWorkspace.didTerminateApplicationNotification, object: nil)
@@ -49,12 +44,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         createMenu()
     }
 
+    @objc func requestAccessibility(_: Any?) {
+        AccessibilityPermission.request()
+    }
+
+    @objc func openSettings(_: Any?) {
+        SettingsWindowController.shared.show()
+    }
+
     @objc func openPreferences(_: Any?) {
         let task = Process()
-        let appSupportDirectory = NSSearchPathForDirectoriesInDomains(.applicationSupportDirectory, .userDomainMask, true).first!.appending("/MTMR")
-        let presetPath = appSupportDirectory.appending("/items.json")
         task.launchPath = "/usr/bin/open"
-        task.arguments = [presetPath]
+        task.arguments = [standardConfigPath]
         task.launch()
     }
 
@@ -99,7 +100,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         dialog.canCreateDirectories = false
         dialog.allowsMultipleSelection = false
         dialog.allowedFileTypes = ["json"]
-        dialog.directoryURL = NSURL.fileURL(withPath: NSSearchPathForDirectoriesInDomains(.applicationSupportDirectory, .userDomainMask, true).first!.appending("/MTMR"), isDirectory: true)
+        dialog.directoryURL = NSURL.fileURL(withPath: appSupportDirectory, isDirectory: true)
 
         if dialog.runModal() == .OK, let path = dialog.url?.path {
             TouchBarController.shared.reloadPreset(path: path)
@@ -111,41 +112,58 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         createMenu()
     }
 
+    /// The menu is rebuilt each time it opens (menuNeedsUpdate), so the current
+    /// app's name and the Accessibility status are always up to date.
     func createMenu() {
         let menu = NSMenu()
-
-        let startAtLogin = NSMenuItem(title: "Start at login", action: #selector(toggleStartAtLogin(_:)), keyEquivalent: "L")
-        startAtLogin.state = LaunchAtLoginController().launchAtLogin ? .on : .off
-
-        let toggleBlackList = NSMenuItem(title: "Toggle current app in blacklist", action: #selector(toggleBlackListedApp(_:)), keyEquivalent: "B")
-        toggleBlackList.state = isBlockedApp ? .on : .off
-
-        let hideControlStrip = NSMenuItem(title: "Hide Control Strip", action: #selector(toggleControlStrip(_:)), keyEquivalent: "T")
-        hideControlStrip.state = AppSettings.showControlStripState ? .off : .on
-
-        let hapticFeedback = NSMenuItem(title: "Haptic Feedback", action: #selector(toggleHapticFeedback(_:)), keyEquivalent: "H")
-        hapticFeedback.state = AppSettings.hapticFeedbackState ? .on : .off
-
-        let multitouchGestures = NSMenuItem(title: "Volume/Brightness gestures", action: #selector(toggleMultitouch(_:)), keyEquivalent: "")
-        multitouchGestures.state = AppSettings.multitouchGestures ? .on : .off
-
-        let settingSeparator = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
-        settingSeparator.isEnabled = false
-
-        menu.addItem(withTitle: "Preferences", action: #selector(openPreferences(_:)), keyEquivalent: ",")
-        menu.addItem(withTitle: "Open preset", action: #selector(openPreset(_:)), keyEquivalent: "O")
-        menu.addItem(withTitle: "Check for Updates...", action: #selector(SUUpdater.checkForUpdates(_:)), keyEquivalent: "").target = SUUpdater.shared()
-
-        menu.addItem(NSMenuItem.separator())
-        menu.addItem(settingSeparator)
-        menu.addItem(hapticFeedback)
-        menu.addItem(hideControlStrip)
-        menu.addItem(toggleBlackList)
-        menu.addItem(startAtLogin)
-        menu.addItem(multitouchGestures)
-        menu.addItem(NSMenuItem.separator())
-        menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.delegate = self
         statusItem.menu = menu
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+
+        // No icons: macOS 26 adds one to Quit by itself, and that's enough.
+        menu.addItem(withTitle: "\(Brand.name) Settings…", action: #selector(openSettings(_:)), keyEquivalent: ",")
+        let openAtLogin = NSMenuItem(title: "Open at Login", action: #selector(toggleStartAtLogin(_:)), keyEquivalent: "")
+        openAtLogin.state = LaunchAtLoginController().launchAtLogin ? .on : .off
+        menu.addItem(openAtLogin)
+
+        if !AccessibilityPermission.isGranted {
+            let allow = NSMenuItem(title: "Allow Accessibility for Media Keys…", action: #selector(requestAccessibility(_:)), keyEquivalent: "")
+            menu.addItem(allow)
+        }
+
+        // Hiding the bar for the app in front, named so it's clear what it does.
+        if let app = NSWorkspace.shared.frontmostApplication, app.bundleIdentifier != Bundle.main.bundleIdentifier,
+           let name = app.localizedName {
+            menu.addItem(.separator())
+            let hide = NSMenuItem(title: "Hide \(Brand.name) for \u{201C}\(name)\u{201D}", action: #selector(toggleBlackListedApp(_:)), keyEquivalent: "")
+            // Read the list itself; isBlockedApp is only refreshed on app switches.
+            hide.state = TouchBarController.shared.blacklistAppIdentifiers.contains(app.bundleIdentifier ?? "") ? .on : .off
+            menu.addItem(hide)
+        }
+
+        menu.addItem(.separator())
+
+        let options = NSMenu()
+        let haptics = options.addItem(withTitle: "Haptic Feedback", action: #selector(toggleHapticFeedback(_:)), keyEquivalent: "")
+        haptics.state = AppSettings.hapticFeedbackState ? .on : .off
+        let controlStrip = options.addItem(withTitle: "Hide Control Strip", action: #selector(toggleControlStrip(_:)), keyEquivalent: "")
+        controlStrip.state = AppSettings.showControlStripState ? .off : .on
+        let gestures = options.addItem(withTitle: "Volume & Brightness Gestures", action: #selector(toggleMultitouch(_:)), keyEquivalent: "")
+        gestures.state = AppSettings.multitouchGestures ? .on : .off
+        let optionsItem = menu.addItem(withTitle: "Options", action: nil, keyEquivalent: "")
+        optionsItem.submenu = options
+
+        let advanced = NSMenu()
+        advanced.addItem(withTitle: "Edit JSON…", action: #selector(openPreferences(_:)), keyEquivalent: "")
+        advanced.addItem(withTitle: "Open Preset File…", action: #selector(openPreset(_:)), keyEquivalent: "")
+        let advancedItem = menu.addItem(withTitle: "Advanced", action: nil, keyEquivalent: "")
+        advancedItem.submenu = advanced
+
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Quit \(Brand.name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
     }
 
     func reloadOnDefaultConfigChanged() {
@@ -156,8 +174,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         fileSystemSource = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: .write, queue: DispatchQueue(label: "DefaultConfigChanged"))
 
         fileSystemSource?.setEventHandler(handler: {
-            print("Config changed, reloading...")
             DispatchQueue.main.async {
+                guard Date() > TouchBarController.shared.ignoreFileWatcherUntil else { return }
                 TouchBarController.shared.reloadPreset(path: file.path)
             }
         })

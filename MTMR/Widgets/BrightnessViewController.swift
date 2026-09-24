@@ -3,7 +3,9 @@ import AVFoundation
 import Cocoa
 import CoreAudio
 
-class BrightnessViewController: NSCustomTouchBarItem {
+class BrightnessViewController: NSCustomTouchBarItem, SlidableItem, TearDownable {
+    private var timer: Timer?
+
     private(set) var sliderItem: CustomSlider!
 
     init(identifier: NSTouchBarItem.Identifier, refreshInterval: Double, image: NSImage? = nil) {
@@ -20,14 +22,19 @@ class BrightnessViewController: NSCustomTouchBarItem {
         sliderItem.maxValue = 100.0
         sliderItem.floatValue = getBrightness() * 100
 
-        view = sliderItem
+        view = image == nil ? sliderItem.withEndIcons(min: "sun.min.fill", max: "sun.max.fill") : sliderItem
 
         let timer = Timer.scheduledTimer(timeInterval: refreshInterval, target: self, selector: #selector(BrightnessViewController.updateBrightnessSlider), userInfo: nil, repeats: true)
         RunLoop.current.add(timer, forMode: RunLoop.Mode.common)
+        self.timer = timer
     }
 
     required init?(coder _: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    func tearDown() {
+        timer?.invalidate()
     }
 
     deinit {
@@ -37,6 +44,16 @@ class BrightnessViewController: NSCustomTouchBarItem {
     @objc func updateBrightnessSlider() {
         DispatchQueue.main.async {
             self.sliderItem.floatValue = self.getBrightness() * 100
+        }
+    }
+
+    /// 0...1, used by press-and-hold sliding on a collapsed popover.
+    var sliderValue: Double {
+        get { return Double(getBrightness()) }
+        set {
+            let clamped = min(max(newValue, 0), 1)
+            setBrightness(level: Float(clamped))
+            sliderItem.floatValue = Float(clamped * 100)
         }
     }
 

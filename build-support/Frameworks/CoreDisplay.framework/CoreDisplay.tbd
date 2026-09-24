@@ -1,0 +1,10 @@
+--- !tapi-tbd
+# Link stub for the private CoreDisplay framework, which the Command Line Tools
+# SDK doesn't ship a .tbd for. Only lists the symbols MTMR uses.
+tbd-version:     4
+targets:         [ x86_64-macos, arm64-macos ]
+install-name:    '/System/Library/Frameworks/CoreDisplay.framework/Versions/A/CoreDisplay'
+exports:
+  - targets:     [ x86_64-macos, arm64-macos ]
+    symbols:     [ _CoreDisplay_Display_SetUserBrightness, _CoreDisplay_Display_GetUserBrightness ]
+...

@@ -3,7 +3,24 @@ import AVFoundation
 import Cocoa
 import CoreAudio
 
-class VolumeViewController: NSCustomTouchBarItem {
+class VolumeViewController: NSCustomTouchBarItem, SlidableItem, TearDownable {
+    // Stored so tearDown() can remove exactly these blocks; they hold the item weakly.
+    private lazy var routeListener: AudioObjectPropertyListenerBlock = { [weak self] count, addresses in
+        self?.audioRouteChanged(numberAddresses: count, addresses: addresses)
+    }
+    private lazy var volumeListener: AudioObjectPropertyListenerBlock = { [weak self] count, addresses in
+        self?.audioObjectPropertyListenerBlock(numberAddresses: count, addresses: addresses)
+    }
+
+    func tearDown() {
+        removeLastAudioVolumeChangeListener()
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMaster)
+        AudioObjectRemovePropertyListenerBlock(AudioObjectID(bitPattern: kAudioObjectSystemObject), &address, nil, routeListener)
+    }
+
     private(set) var sliderItem: CustomSlider!
     private var currentDeviceId: AudioObjectID = AudioObjectID(0)
 
@@ -21,7 +38,7 @@ class VolumeViewController: NSCustomTouchBarItem {
         sliderItem.maxValue = 100.0
         sliderItem.floatValue = getInputGain() * 100
 
-        view = sliderItem
+        view = image == nil ? sliderItem.withEndIcons(min: "speaker.fill", max: "speaker.wave.3.fill") : sliderItem
         
         currentDeviceId = defaultDeviceID
         self.addAudioRouteChangedListener()
@@ -34,7 +51,7 @@ class VolumeViewController: NSCustomTouchBarItem {
             mSelector: kAudioHardwarePropertyDefaultOutputDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMaster)
-        AudioObjectAddPropertyListenerBlock(audioId, &forPropertyAddress, nil, audioRouteChanged)
+        AudioObjectAddPropertyListenerBlock(audioId, &forPropertyAddress, nil, routeListener)
     }
     
 
@@ -54,7 +71,7 @@ class VolumeViewController: NSCustomTouchBarItem {
             mElement: kAudioObjectPropertyElementMaster
         )
 
-        AudioObjectAddPropertyListenerBlock(defaultDeviceID, &forPropertyAddress, nil, audioObjectPropertyListenerBlock)
+        AudioObjectAddPropertyListenerBlock(defaultDeviceID, &forPropertyAddress, nil, volumeListener)
     }
     
     private func removeLastAudioVolumeChangeListener() {
@@ -64,7 +81,7 @@ class VolumeViewController: NSCustomTouchBarItem {
             mElement: kAudioObjectPropertyElementMaster
         )
 
-        AudioObjectRemovePropertyListenerBlock(currentDeviceId, &forPropertyAddress, nil, audioObjectPropertyListenerBlock)
+        AudioObjectRemovePropertyListenerBlock(currentDeviceId, &forPropertyAddress, nil, volumeListener)
     }
 
     func audioObjectPropertyListenerBlock(numberAddresses _: UInt32, addresses _: UnsafePointer<AudioObjectPropertyAddress>) {
@@ -79,6 +96,16 @@ class VolumeViewController: NSCustomTouchBarItem {
 
     deinit {
         sliderItem.unbind(NSBindingName.value)
+    }
+
+    /// 0...1, used by press-and-hold sliding on a collapsed popover.
+    var sliderValue: Double {
+        get { return Double(getInputGain()) }
+        set {
+            let clamped = min(max(newValue, 0), 1)
+            _ = setInputGain(Float32(clamped))
+            sliderItem.floatValue = Float(clamped * 100)
+        }
     }
 
     @objc func sliderValueChanged(_ sender: Any) {

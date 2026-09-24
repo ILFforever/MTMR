@@ -8,7 +8,12 @@
 
 import Cocoa
 
-class PomodoroBarItem: CustomButtonTouchBarItem, Widget {
+class PomodoroBarItem: CustomButtonTouchBarItem, Widget, TearDownable {
+    func tearDown() {
+        timer?.cancel()
+        timer = nil
+    }
+
     static let identifier = "com.toxblh.mtmr.pomodoro."
     static let name = "pomodoro"
     static let decoder: ParametersDecoder = { decoder in

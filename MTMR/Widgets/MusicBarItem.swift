@@ -9,7 +9,11 @@
 import Cocoa
 import ScriptingBridge
 
-class MusicBarItem: CustomButtonTouchBarItem {
+class MusicBarItem: CustomButtonTouchBarItem, TearDownable {
+    func tearDown() {
+        timer?.invalidate()
+    }
+
     private enum Player: String {
         case Music = "com.apple.Music"
         case iTunes = "com.apple.iTunes"

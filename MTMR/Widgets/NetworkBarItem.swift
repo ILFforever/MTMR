@@ -8,7 +8,17 @@
 
 import Foundation
 
-class NetworkBarItem: CustomButtonTouchBarItem, Widget {
+class NetworkBarItem: CustomButtonTouchBarItem, Widget, TearDownable {
+    private var bandwidthProcess: Process?
+    private var dataObserver: NSObjectProtocol?
+
+    func tearDown() {
+        if let observer = dataObserver { NotificationCenter.default.removeObserver(observer) }
+        dataObserver = nil
+        bandwidthProcess?.terminate()
+        bandwidthProcess = nil
+    }
+
     static var name: String = "network"
     static var identifier: String = "com.toxblh.mtmr.network"
     
@@ -29,7 +39,6 @@ class NetworkBarItem: CustomButtonTouchBarItem, Widget {
     func startMonitoringProcess() {
         var pipe: Pipe
         var outputHandle: FileHandle
-        var bandwidthProcess: Process?
         var dSpeed: UInt64?
         var uSpeed: UInt64?
         var curr: Array<Substring>?
@@ -48,7 +57,8 @@ class NetworkBarItem: CustomButtonTouchBarItem, Widget {
             forName: NSNotification.Name.NSFileHandleDataAvailable,
             object: outputHandle,
             queue: nil
-        ) { _ -> Void in
+        ) { [weak self] _ -> Void in
+            guard let self = self else { return }
             let data = pipe.fileHandleForReading.availableData
             if data.count > 0 {
                 if let str = NSString(data: data, encoding: String.Encoding.utf8.rawValue) {
@@ -83,6 +93,7 @@ class NetworkBarItem: CustomButtonTouchBarItem, Widget {
             }
         }
 
+        dataObserver = dataAvailable
         bandwidthProcess?.launch()
     }
 
@@ -133,7 +144,7 @@ class NetworkBarItem: CustomButtonTouchBarItem, Widget {
         appendString.append(NSMutableAttributedString(
             string: newStr ? "\n↑" : "↑",
             attributes: [
-                NSAttributedString.Key.foregroundColor: NSColor.blue,
+                NSAttributedString.Key.foregroundColor: NSColor.systemBlue,
                 NSAttributedString.Key.font: titleFont,
                 ]))
         
@@ -148,7 +159,7 @@ class NetworkBarItem: CustomButtonTouchBarItem, Widget {
         appendString.append(NSMutableAttributedString(
             string: newStr ? "\n↓" : "↓",
             attributes: [
-                NSAttributedString.Key.foregroundColor: NSColor.red,
+                NSAttributedString.Key.foregroundColor: NSColor.systemRed,
                 NSAttributedString.Key.font: titleFont,
                 ]))
             
@@ -160,7 +171,7 @@ class NetworkBarItem: CustomButtonTouchBarItem, Widget {
     }
     
     func setTitle(up: String, down: String) {
-        let titleFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: NSFont.Weight.light)
+        let titleFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: NSFont.Weight.regular)
         
         let newTitle: NSMutableAttributedString = NSMutableAttributedString(string: "")
         
@@ -173,6 +184,16 @@ class NetworkBarItem: CustomButtonTouchBarItem, Widget {
         }
         
         
+        // Two lines must fit the 30pt bar: pin the line height instead of using
+        // the font's default leading, which pushes the second line off the bottom.
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.minimumLineHeight = 13
+        paragraph.maximumLineHeight = 13
+        paragraph.alignment = .left
+        let range = NSRange(location: 0, length: newTitle.length)
+        newTitle.addAttribute(.paragraphStyle, value: paragraph, range: range)
+        newTitle.addAttribute(.baselineOffset, value: -1, range: range)
+
         self.attributedTitle = newTitle
     }
 }

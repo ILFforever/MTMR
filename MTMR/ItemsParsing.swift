@@ -3,7 +3,13 @@ import Foundation
 
 extension Data {
     func barItemDefinitions() -> [BarItemDefinition]? {
-           return try! JSONDecoder().decode([BarItemDefinition].self, from: utf8string!.stripComments().data(using: .utf8)!)
+        guard let json = utf8string?.stripComments().data(using: .utf8) else { return nil }
+        do {
+            return try JSONDecoder().decode([BarItemDefinition].self, from: json)
+        } catch {
+            NSLog("Stripe: invalid preset: \(error)")
+            return nil // the caller shows a "bad preset" button instead of crashing
+        }
     }
 }
 
@@ -152,18 +158,14 @@ class SupportedTypesHolder {
             )
         },
 
-        "mute": { _ in
-            let imageParameter = GeneralParameter.image(source: NSImage(named: NSImage.touchBarAudioOutputMuteTemplateName)!)
-            return (
-                item: .staticButton(title: ""),
-                actions: [
-                    Action(trigger: .singleTap, value: .hidKey(keycode: NX_KEYTYPE_MUTE))
-                ],
-                legacyAction: .none,
-                legacyLongAction: .none,
-                parameters: [.image: imageParameter]
-            )
-        },
+        // A real toggle via CoreAudio that shows the mute state (MuteBarItem).
+        "mute": { _ in (
+            item: .mute,
+            actions: [],
+            legacyAction: .none,
+            legacyLongAction: .none,
+            parameters: [:]
+        ) },
 
         "previous": { _ in
             let imageParameter = GeneralParameter.image(source: NSImage(named: NSImage.touchBarRewindTemplateName)!)
@@ -260,10 +262,11 @@ enum ItemType: Decodable {
     case appleScriptTitledButton(source: SourceProtocol, refreshInterval: Double, alternativeImages: [String: SourceProtocol])
     case shellScriptTitledButton(source: SourceProtocol, refreshInterval: Double)
     case timeButton(formatTemplate: String, timeZone: String?, locale: String?)
-    case battery
+    case battery(options: BatteryOptions)
     case cpu(refreshInterval: Double)
     case dock(autoResize: Bool, filter: String?)
     case volume
+    case mute
     case brightness(refreshInterval: Double)
     case weather(interval: Double, units: String, api_key: String, icon_type: String)
     case yandexWeather(interval: Double)
@@ -271,6 +274,7 @@ enum ItemType: Decodable {
     case inputsource
     case music(interval: Double, disableMarquee: Bool)
     case group(items: [BarItemDefinition])
+    case popover(items: [BarItemDefinition], pressAndHold: Bool, autoClose: Double?, liveIcon: Bool)
     case nightShift
     case dnd
     case pomodoro(workTime: Double, restTime: Double)
@@ -310,6 +314,10 @@ enum ItemType: Decodable {
         case fingers
         case minOffset
         case maxToShow
+        case pressAndHold
+        case autoClose
+        case liveIcon
+        case showIcon, showPercentage, percentInside, showTime, animate, lowThreshold, tapToCycle
     }
 
     enum ItemTypeRaw: String, Decodable {
@@ -328,6 +336,7 @@ enum ItemType: Decodable {
         case inputsource
         case music
         case group
+        case popover
         case nightShift
         case dnd
         case pomodoro
@@ -363,7 +372,15 @@ enum ItemType: Decodable {
             self = .timeButton(formatTemplate: template, timeZone: timeZone, locale: locale)
 
         case .battery:
-            self = .battery
+            var options = BatteryOptions()
+            options.showIcon = try container.decodeIfPresent(Bool.self, forKey: .showIcon) ?? options.showIcon
+            options.showPercentage = try container.decodeIfPresent(Bool.self, forKey: .showPercentage) ?? options.showPercentage
+            options.percentInside = try container.decodeIfPresent(Bool.self, forKey: .percentInside) ?? options.percentInside
+            options.showTime = try container.decodeIfPresent(Bool.self, forKey: .showTime) ?? options.showTime
+            options.animate = try container.decodeIfPresent(Bool.self, forKey: .animate) ?? options.animate
+            options.lowThreshold = try container.decodeIfPresent(Int.self, forKey: .lowThreshold) ?? options.lowThreshold
+            options.tapToCycle = try container.decodeIfPresent(Bool.self, forKey: .tapToCycle) ?? options.tapToCycle
+            self = .battery(options: options)
             
         case .cpu:
             let refreshInterval = try container.decodeIfPresent(Double.self, forKey: .refreshInterval) ?? 5.0
@@ -410,6 +427,13 @@ enum ItemType: Decodable {
         case .group:
             let items = try container.decode([BarItemDefinition].self, forKey: .items)
             self = .group(items: items)
+
+        case .popover:
+            let items = try container.decode([BarItemDefinition].self, forKey: .items)
+            let pressAndHold = try container.decodeIfPresent(Bool.self, forKey: .pressAndHold) ?? false
+            let autoClose = try container.decodeIfPresent(Double.self, forKey: .autoClose)
+            let liveIcon = try container.decodeIfPresent(Bool.self, forKey: .liveIcon) ?? true
+            self = .popover(items: items, pressAndHold: pressAndHold, autoClose: autoClose, liveIcon: liveIcon)
 
         case .nightShift:
             self = .nightShift
@@ -659,7 +683,8 @@ enum GeneralParameter {
     case bordered(_: Bool)
     case background(_: NSColor)
     case title(_: String)
-    case matchAppId(_: String)
+    case style(_: ItemStyle)
+    case when(_: ItemCondition)
 }
 
 struct GeneralParameters: Decodable {
@@ -673,11 +698,15 @@ struct GeneralParameters: Decodable {
         case background
         case title
         case matchAppId
+        case style // stands for all ItemStyle keys, which are decoded together
+        case when
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         var result: [GeneralParameters.CodingKeys: GeneralParameter] = [:]
+
+        result[.style] = .style(try ItemStyle(from: decoder))
 
         if let value = try container.decodeIfPresent(CGFloat.self, forKey: .width) {
             result[.width] = .width(value)
@@ -694,7 +723,7 @@ struct GeneralParameters: Decodable {
             result[.bordered] = .bordered(borderedFlag)
         }
 
-        if let backgroundColor = try container.decodeIfPresent(String.self, forKey: .background)?.hexColor {
+        if let backgroundColor = try container.decodeIfPresent(String.self, forKey: .background)?.namedOrHexColor {
             result[.background] = .background(backgroundColor)
         }
 
@@ -702,8 +731,10 @@ struct GeneralParameters: Decodable {
             result[.title] = .title(title)
         }
 
-        if let matchAppId = try container.decodeIfPresent(String.self, forKey: .matchAppId) {
-            result[.matchAppId] = .matchAppId(matchAppId)
+        if let condition = try container.decodeIfPresent(ItemCondition.self, forKey: .when) {
+            result[.when] = .when(condition)
+        } else if let matchAppId = try container.decodeIfPresent(String.self, forKey: .matchAppId) {
+            result[.when] = .when(ItemCondition(app: matchAppId))
         }
 
         parameters = result

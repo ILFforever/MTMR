@@ -67,6 +67,70 @@ class CustomSliderCell: NSSliderCell {
     }
 }
 
+/// Draws a slider like Apple's Control Strip ones: a thin rounded track that is
+/// white up to the value, and a round white knob.
+class StripSliderCell: NSSliderCell {
+    static let knobDiameter: CGFloat = 22
+    static let trackHeight: CGFloat = 4
+
+    override func knobRect(flipped: Bool) -> NSRect {
+        let bar = barRect(flipped: flipped)
+        let d = StripSliderCell.knobDiameter
+        let fraction = maxValue > minValue ? CGFloat((doubleValue - minValue) / (maxValue - minValue)) : 0
+        let x = bar.minX + fraction * (bar.width - d)
+        return NSRect(x: x, y: bar.midY - d / 2, width: d, height: d)
+    }
+
+    override func drawBar(inside aRect: NSRect, flipped: Bool) {
+        let h = StripSliderCell.trackHeight
+        let track = NSRect(x: aRect.minX, y: aRect.midY - h / 2, width: aRect.width, height: h)
+        NSColor(white: 1, alpha: 0.3).setFill()
+        NSBezierPath(roundedRect: track, xRadius: h / 2, yRadius: h / 2).fill()
+
+        var filled = track
+        filled.size.width = knobRect(flipped: flipped).midX - track.minX
+        NSColor.white.setFill()
+        NSBezierPath(roundedRect: filled, xRadius: h / 2, yRadius: h / 2).fill()
+    }
+
+    override func drawKnob(_ knobRect: NSRect) {
+        let knob = NSBezierPath(ovalIn: knobRect.insetBy(dx: 1, dy: 1))
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor(white: 0, alpha: 0.5)
+        shadow.shadowBlurRadius = 2
+        shadow.set()
+        NSColor.white.setFill()
+        knob.fill()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+}
+
+extension NSSlider {
+    /// Wraps the slider in a row with small SF Symbols at each end, like the
+    /// Control Strip's volume and brightness sliders.
+    func withEndIcons(min minSymbol: String, max maxSymbol: String) -> NSView {
+        func icon(_ name: String) -> NSImageView {
+            let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+            let view = NSImageView(image: NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+                .withSymbolConfiguration(config) ?? NSImage())
+            view.contentTintColor = NSColor(white: 1, alpha: 0.7)
+            view.setContentHuggingPriority(.required, for: .horizontal)
+            return view
+        }
+        let row = NSStackView(views: [icon(minSymbol), self, icon(maxSymbol)])
+        row.orientation = .horizontal
+        row.spacing = 10
+        row.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
+        // Sit on a rounded gray panel, like the Control Strip's expanded sliders.
+        row.wantsLayer = true
+        row.layer?.backgroundColor = NSColor(white: 1, alpha: 0.14).cgColor
+        row.layer?.cornerRadius = 6 // matches the standard Touch Bar key rounding
+        row.heightAnchor.constraint(equalToConstant: 30).isActive = true // full bar height, like the buttons
+        return row
+    }
+}
+
 class CustomSlider: NSSlider {
     var currentValue: CGFloat = 0
 
@@ -93,6 +157,8 @@ class CustomSlider: NSSlider {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        // Without a custom knob image, use the Control Strip look.
+        cell = StripSliderCell()
     }
 
     func knobImage() -> NSImage {
