@@ -104,6 +104,13 @@ class PopoverBarItem: CustomButtonTouchBarItem, NSTouchBarDelegate {
         let stack = NSStackView(views: views)
         stack.orientation = .horizontal
         stack.spacing = 8
+        // Set the close button apart from the controls it closes.
+        let gap = Theme.current.closeButton.gap
+        if align == .right, let lastChild = children.last {
+            stack.setCustomSpacing(gap, after: lastChild)
+        } else if align != .right, let closeView = close.first {
+            stack.setCustomSpacing(gap, after: closeView)
+        }
         // Keep the round ✕ whole where it meets the bar's end.
         stack.edgeInsets = NSEdgeInsets(top: 0, left: 4, bottom: 0, right: 4)
         if align == .center, let first = views.first, let last = views.last {
@@ -165,13 +172,9 @@ class PopoverBarItem: CustomButtonTouchBarItem, NSTouchBarDelegate {
     private func makeItem(_ identifier: NSTouchBarItem.Identifier) -> NSTouchBarItem? {
         if identifier == closeIdentifier {
             if let close = closeItem { return close }
-            // A gray rounded key, like the close button on Apple's expanded controls.
-            let close = CustomButtonTouchBarItem(identifier: identifier, title: "")
-            close.style = ItemStyle(fontSize: 11, fontWeight: .bold, cornerRadius: 15, symbol: "xmark")
-            close.backgroundColor = NSColor(white: 1, alpha: 0.2)
-            close.setWidth(value: 30) // with the 30pt bar height and 15pt radius: a circle
-            close.view.heightAnchor.constraint(equalToConstant: 30).isActive = true
-            close.actions = [ItemAction(trigger: .singleTap) { [weak self] in self?.collapse() }]
+            // A small circle with a bold ✕, like macOS's own Touch Bar controls.
+            let close = NSCustomTouchBarItem(identifier: identifier)
+            close.view = CloseButtonView(theme: Theme.current.closeButton) { [weak self] in self?.collapse() }
             closeItem = close
             return close
         }
@@ -258,6 +261,69 @@ class DismissArea: NSView {
 
     required init?(coder _: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    @objc private func tapped() {
+        onTap()
+    }
+}
+
+/// The close button of an expanded popover: a circle with a ✕, drawn at the
+/// theme's size and vertically centered in the bar. A plain view rather than a
+/// button, since NSButton on the Touch Bar insists on full bar height.
+class CloseButtonView: NSView {
+    private let theme: Theme.CloseButton
+    private let onTap: () -> Void
+    private var pressed = false {
+        didSet { needsDisplay = true }
+    }
+
+    init(theme: Theme.CloseButton, onTap: @escaping () -> Void) {
+        self.theme = theme
+        self.onTap = onTap
+        super.init(frame: .zero)
+        let tap = NSClickGestureRecognizer(target: self, action: #selector(tapped))
+        tap.allowedTouchTypes = .direct
+        addGestureRecognizer(tap)
+    }
+
+    required init?(coder _: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var intrinsicContentSize: NSSize {
+        // A little wider than the circle so it's easy to hit.
+        return NSSize(width: theme.diameter + 8, height: 30)
+    }
+
+    override func draw(_: NSRect) {
+        let d = theme.diameter
+        let circle = NSRect(x: (bounds.width - d) / 2, y: (bounds.height - d) / 2, width: d, height: d)
+        (pressed ? theme.background.blended(withFraction: 0.3, of: .black) ?? theme.background : theme.background).setFill()
+        NSBezierPath(ovalIn: circle).fill()
+
+        let config = NSImage.SymbolConfiguration(pointSize: theme.glyphSize, weight: .heavy)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [theme.glyph]))
+        guard let glyph = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")?
+            .withSymbolConfiguration(config) else { return }
+        let size = glyph.size
+        glyph.draw(in: NSRect(x: circle.midX - size.width / 2, y: circle.midY - size.height / 2,
+                              width: size.width, height: size.height))
+    }
+
+    override func touchesBegan(with event: NSEvent) {
+        pressed = true
+        super.touchesBegan(with: event)
+    }
+
+    override func touchesEnded(with event: NSEvent) {
+        pressed = false
+        super.touchesEnded(with: event)
+    }
+
+    override func touchesCancelled(with event: NSEvent) {
+        pressed = false
+        super.touchesCancelled(with: event)
     }
 
     @objc private func tapped() {
