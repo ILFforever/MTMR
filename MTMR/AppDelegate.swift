@@ -15,8 +15,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var fileSystemSource: DispatchSourceFileSystemObject?
 
     func applicationDidFinishLaunching(_: Notification) {
-        let trusted = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeRetainedValue() as NSString: true] as NSDictionary)
-        NSLog("Stripe: Accessibility permission \(trusted ? "granted" : "NOT granted; key-simulating buttons won't work")")
+        // Checked quietly; the prompt comes only when a key-simulating button is used.
+        NSLog("Stripe: Accessibility permission \(AccessibilityPermission.isGranted ? "granted" : "not granted yet")")
 
         TouchBarController.shared.setupControlStripPresence()
 
@@ -42,6 +42,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             isBlockedApp = false
         }
         createMenu()
+    }
+
+    @objc func requestAccessibility(_: Any?) {
+        AccessibilityPermission.request()
     }
 
     @objc func openSettings(_: Any?) {
@@ -132,6 +136,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings(_:)), keyEquivalent: ",")
         menu.addItem(withTitle: "Edit JSON…", action: #selector(openPreferences(_:)), keyEquivalent: "")
         menu.addItem(withTitle: "Open preset", action: #selector(openPreset(_:)), keyEquivalent: "O")
+
+        if !AccessibilityPermission.isGranted {
+            menu.addItem(withTitle: "Allow Accessibility (for media keys)…", action: #selector(requestAccessibility(_:)), keyEquivalent: "")
+        }
 
         menu.addItem(NSMenuItem.separator())
         menu.addItem(settingSeparator)

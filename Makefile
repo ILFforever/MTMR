@@ -10,6 +10,10 @@ APP_NAME    := Stripe
 BUNDLE_ID   ?= com.ilfforever.stripe
 MIN_MACOS   := 12.0
 ARCHS       ?= $(shell uname -m)
+# Sign with a stable local certificate when there is one (see
+# build-support/make-signing-identity.sh), so Accessibility permission survives
+# rebuilds; otherwise ad-hoc, which macOS treats as a new app every build.
+SIGN_ID     ?= $(shell security find-certificate -c "Stripe Local Signing" >/dev/null 2>&1 && echo "Stripe Local Signing" || echo "-")
 
 BUILD       := build
 APP         := $(BUILD)/$(APP_NAME).app
@@ -72,7 +76,7 @@ $(APP): $(BUILD)/$(APP_NAME) $(SRC)/Info.plist $(SRC)/MTMR.entitlements
 	done; iconutil -c icns $$iconset -o $(CONTENTS)/Resources/AppIcon.icns
 	cp $(SRC)/defaultPreset.json $(CONTENTS)/Resources/
 	cp -R $(SRC)/AppleScripts/ $(CONTENTS)/Resources/
-	codesign --force --sign - --entitlements $(SRC)/MTMR.entitlements $(APP)
+	codesign --force --sign "$(SIGN_ID)" --entitlements $(SRC)/MTMR.entitlements $(APP)
 	@echo "==> built $(APP)"
 
 run: $(APP)

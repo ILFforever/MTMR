@@ -494,9 +494,9 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         }
         switch action.value {
         case let .hidKey(keycode: keycode):
-            return { HIDPostAuxKey(keycode) }
+            return { AccessibilityPermission.requestIfNeeded(); HIDPostAuxKey(keycode) }
         case let .keyPress(keycode: keycode):
-            return { GenericKeyPress(keyCode: CGKeyCode(keycode)).send() }
+            return { AccessibilityPermission.requestIfNeeded(); GenericKeyPress(keyCode: CGKeyCode(keycode)).send() }
         case let .appleScript(source: source):
             guard let appleScript = source.appleScript else {
                 print("cannot create apple script for item \(action)")
@@ -538,9 +538,9 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     func action(forItem item: BarItemDefinition) -> (() -> Void)? {
         switch item.legacyAction {
         case let .hidKey(keycode: keycode):
-            return { HIDPostAuxKey(keycode) }
+            return { AccessibilityPermission.requestIfNeeded(); HIDPostAuxKey(keycode) }
         case let .keyPress(keycode: keycode):
-            return { GenericKeyPress(keyCode: CGKeyCode(keycode)).send() }
+            return { AccessibilityPermission.requestIfNeeded(); GenericKeyPress(keyCode: CGKeyCode(keycode)).send() }
         case let .appleScript(source: source):
             guard let appleScript = source.appleScript else {
                 print("cannot create apple script for item \(item)")
@@ -582,9 +582,9 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     func longAction(forItem item: BarItemDefinition) -> (() -> Void)? {
         switch item.legacyLongAction {
         case let .hidKey(keycode: keycode):
-            return { HIDPostAuxKey(keycode) }
+            return { AccessibilityPermission.requestIfNeeded(); HIDPostAuxKey(keycode) }
         case let .keyPress(keycode: keycode):
-            return { GenericKeyPress(keyCode: CGKeyCode(keycode)).send() }
+            return { AccessibilityPermission.requestIfNeeded(); GenericKeyPress(keyCode: CGKeyCode(keycode)).send() }
         case let .appleScript(source: source):
             guard let appleScript = source.appleScript else {
                 print("cannot create apple script for item \(item)")
