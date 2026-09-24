@@ -28,9 +28,6 @@ class BasicView: NSCustomTouchBarItem, NSGestureRecognizerDelegate {
         let stackView = NSStackView(views: views)
         stackView.spacing = 8
         stackView.orientation = .horizontal
-        // Keep the outermost items clear of the bar's rounded ends, which would
-        // otherwise clip their corners (most visible on a rounded Esc button).
-        stackView.edgeInsets = NSEdgeInsets(top: 0, left: 6, bottom: 0, right: 6)
         view = stackView
 
         twofingers = NSPanGestureRecognizer(target: self, action: #selector(twofingersHandler(_:)))
