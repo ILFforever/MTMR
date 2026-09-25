@@ -62,7 +62,8 @@ class CPUBarItem: CustomButtonTouchBarItem {
                 attrTitle.addAttributes([.foregroundColor: color], range: NSRange(location: 0, length: attrTitle.length))
             }
             self.attributedTitle = attrTitle
-            self.backgroundColor = bgColor
+            // Changing the background rebuilds the key; only do it when it changes.
+            if self.backgroundColor != bgColor { self.backgroundColor = bgColor }
         }
         
         refreshQueue?.asyncAfter(deadline: .now() + refreshInterval) { [weak self] in

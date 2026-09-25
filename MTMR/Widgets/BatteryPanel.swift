@@ -46,6 +46,10 @@ final class BatteryPanelContent {
     private(set) var view: NSView!
 
     private let apps = AppEnergy()
+    /// Energy sampling walks every process, so it runs off the main thread.
+    private static let samplingQueue = DispatchQueue(label: "com.ilfforever.stripe.appEnergy")
+    /// What the apps tile shows now, so an unchanged refresh doesn't rebuild it.
+    private var shownApps: [String] = []
     private let chargeCaption = PanelTile.caption()
     private let chargeValue = PanelTile.value()
     private let graph = ChargeGraphView()
@@ -125,7 +129,8 @@ final class BatteryPanelContent {
         let slab = PanelSlab(content: stack)
         slab.onLayout = { [weak self] in self?.fitTiles() }
         view = slab
-        _ = apps.sample() // baseline; app figures appear from the next refresh
+        let apps = self.apps
+        BatteryPanelContent.samplingQueue.async { _ = apps.sample() } // baseline; figures appear from the next refresh
     }
 
     /// Drops the tiles that don't fit, least important first. Only changes what
@@ -166,7 +171,13 @@ final class BatteryPanelContent {
 
         showSince(charge: info.current, onAC: info.onACPower)
         graph.samples = BatteryHistory.shared.samples
-        if appsTile != nil { showApps(apps.sample()) }
+        if appsTile != nil {
+            let apps = self.apps
+            BatteryPanelContent.samplingQueue.async { [weak self] in
+                let usage = apps.sample(limit: BatteryPanelContent.maxApps)
+                DispatchQueue.main.async { self?.showApps(usage) }
+            }
+        }
     }
 
     /// "2:14  −26%  9%/h": time since the last plug or unplug, the charge used or
@@ -191,6 +202,9 @@ final class BatteryPanelContent {
     }
 
     private func showApps(_ usage: [AppEnergy.Usage]) {
+        let summary = usage.prefix(BatteryPanelContent.maxApps).map { "\($0.name) \(BatteryPanel.watts($0.watts))" }
+        guard summary != shownApps || appsRow.arrangedSubviews.isEmpty else { return }
+        shownApps = summary
         for view in appsRow.arrangedSubviews {
             appsRow.removeArrangedSubview(view)
             view.removeFromSuperview()
@@ -267,14 +281,29 @@ final class BatteryPanel: NSObject, NSTouchBarDelegate {
         let content = BatteryPanelContent(options: options) { [weak self] in self?.close() }
         self.content = content
         content.refresh()
+        content.view.alphaValue = 0
         TouchBarController.shared.showSubBar(identifiers: [identifier], delegate: self)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.2
+            content.view.animator().alphaValue = 1
+        }
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.refresh() }
     }
 
+    /// Fades the panel out, then brings back the main bar.
     func close() {
-        guard isOpen else { return }
-        stop()
-        TouchBarController.shared.restoreMainBar()
+        guard isOpen, let view = content?.view else { return }
+        timer?.invalidate()
+        timer = nil
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.15
+            view.animator().alphaValue = 0
+        }, completionHandler: { [weak self] in
+            // Unless it was reopened while fading out.
+            guard let self = self, self.content?.view === view, !self.isOpen else { return }
+            self.content = nil
+            TouchBarController.shared.restoreMainBar()
+        })
     }
 
     private func stop() {
@@ -374,21 +403,41 @@ final class PanelDivider: NSView {
     }
 }
 
-/// A chevron pointing toward the bar's edge that closes the panel.
+/// A chevron pointing toward the bar's edge that closes the panel. Pressing it
+/// behaves like a key: a rounded highlight fades in, the chevron nudges toward
+/// the edge, and there's a haptic click. It closes when the finger lifts
+/// inside it; sliding off cancels.
 final class PanelBackButton: NSView {
     private let symbol: String
+    /// Which way the chevron nudges while pressed: toward the bar's edge.
+    private let nudge: CGFloat
     private let onTap: () -> Void
     private var pressed = false {
-        didSet { needsDisplay = true }
+        didSet {
+            guard pressed != oldValue else { return }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = pressed ? 0.08 : 0.2
+                context.allowsImplicitAnimation = true
+                layer?.backgroundColor = NSColor(white: 1, alpha: pressed ? 0.22 : 0).cgColor
+            }
+            needsDisplay = true
+        }
     }
 
     init(pointing side: Align, action: @escaping () -> Void) {
         symbol = side == .left ? "chevron.left" : "chevron.right"
+        nudge = side == .left ? -2 : 2
         onTap = action
         super.init(frame: .zero)
-        let tap = NSClickGestureRecognizer(target: self, action: #selector(tapped))
-        tap.allowedTouchTypes = .direct
-        addGestureRecognizer(tap)
+        wantsLayer = true
+        layer?.cornerRadius = 7
+        // Tracks the whole press (down, moves, up), not just the tap, so the
+        // highlight shows as soon as a finger lands.
+        let press = NSPressGestureRecognizer(target: self, action: #selector(handlePress(_:)))
+        press.minimumPressDuration = 0
+        press.allowableMovement = .greatestFiniteMagnitude
+        press.allowedTouchTypes = .direct
+        addGestureRecognizer(press)
     }
 
     required init?(coder _: NSCoder) {
@@ -399,31 +448,31 @@ final class PanelBackButton: NSView {
 
     override func draw(_: NSRect) {
         let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [NSColor(white: 1, alpha: pressed ? 0.45 : 0.9)]))
+            .applying(NSImage.SymbolConfiguration(paletteColors: [NSColor(white: 1, alpha: 0.9)]))
         guard let glyph = NSImage(systemSymbolName: symbol, accessibilityDescription: "Back")?
             .withSymbolConfiguration(config) else { return }
         let size = glyph.size
-        glyph.draw(in: NSRect(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2,
-                              width: size.width, height: size.height))
+        let x = (bounds.width - size.width) / 2 + (pressed ? nudge : 0)
+        glyph.draw(in: NSRect(x: x, y: (bounds.height - size.height) / 2, width: size.width, height: size.height))
     }
 
-    override func touchesBegan(with event: NSEvent) {
-        pressed = true
-        super.touchesBegan(with: event)
-    }
-
-    override func touchesEnded(with event: NSEvent) {
-        pressed = false
-        super.touchesEnded(with: event)
-    }
-
-    override func touchesCancelled(with event: NSEvent) {
-        pressed = false
-        super.touchesCancelled(with: event)
-    }
-
-    @objc private func tapped() {
-        onTap()
+    @objc private func handlePress(_ recognizer: NSPressGestureRecognizer) {
+        let inside = bounds.contains(recognizer.location(in: self))
+        switch recognizer.state {
+        case .began:
+            pressed = true
+            HapticFeedback.instance.tap(type: .click)
+        case .changed:
+            pressed = inside
+        case .ended:
+            pressed = false
+            if inside {
+                HapticFeedback.instance.tap(type: .back)
+                onTap()
+            }
+        default:
+            pressed = false
+        }
     }
 }
 

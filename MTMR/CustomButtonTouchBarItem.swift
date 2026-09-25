@@ -276,15 +276,33 @@ class CustomHeightButton: NSButton {
         didSet { invalidateIntrinsicContentSize() }
     }
 
+    /// Called after each layout, e.g. to keep an overlay aligned with the image.
+    var onLayout: (() -> Void)?
+
+    override func layout() {
+        super.layout()
+        onLayout?()
+    }
+
+    private static var measured: (title: NSAttributedString, size: NSSize)?
+
+    /// A multi-line title's size, remembered for the last title measured: laying
+    /// the text out is the costly part, and it's asked for on every layout and draw.
+    static func measure(_ title: NSAttributedString) -> NSSize {
+        if let last = measured, last.title.isEqual(to: title) { return last.size }
+        let size = title.boundingRect(with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude),
+                                      options: [.usesLineFragmentOrigin]).size
+        measured = (title.copy() as! NSAttributedString, size)
+        return size
+    }
+
     override var intrinsicContentSize: NSSize {
         var size = super.intrinsicContentSize
         size.height = 30
         let imageWidth = image.map { $0.size.width + 4 } ?? 0
         // NSButton measures a multi-line title as one long line; use the widest line.
         if attributedTitle.string.contains("\n") {
-            let textWidth = ceil(attributedTitle.boundingRect(
-                with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude),
-                options: [.usesLineFragmentOrigin]).width)
+            let textWidth = ceil(CustomHeightButton.measure(attributedTitle).width)
             size.width = max(textWidth, minimumTitleWidth) + imageWidth + 2 * CustomHeightButton.multilineInset
         } else if minimumTitleWidth > 0 {
             // Holds the space before the first title arrives, too.
@@ -324,8 +342,7 @@ class CustomButtonCell: NSButtonCell {
         guard title.string.contains("\n") else {
             return super.drawTitle(title, withFrame: frame, in: controlView)
         }
-        let size = title.boundingRect(with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude),
-                                      options: [.usesLineFragmentOrigin]).size
+        let size = CustomHeightButton.measure(title)
         let bounds = controlView.bounds
         // With an icon, stay in the space beside it; otherwise use the whole key.
         let midX = image == nil ? bounds.midX : frame.midX

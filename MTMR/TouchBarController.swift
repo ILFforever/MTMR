@@ -557,7 +557,8 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         if case let .background(color)? = item.additionalParameters[.background], let item = barItem as? CustomButtonTouchBarItem {
             item.backgroundColor = color
         }
-        if case let .width(value)? = item.additionalParameters[.width], let widthBarItem = barItem as? CanSetWidth {
+        if case var .width(value)? = item.additionalParameters[.width], let widthBarItem = barItem as? CanSetWidth {
+            if barItem is MusicBarItem { value = max(value, MusicBarItem.minimumWidth) }
             widthBarItem.setWidth(value: value)
         }
         if case let .image(source)? = item.additionalParameters[.image], let item = barItem as? CustomButtonTouchBarItem {

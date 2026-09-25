@@ -2,7 +2,8 @@
 //  NowPlaying.swift
 //  Stripe
 //
-//  Whether media is playing anywhere on the Mac (Music, Spotify, a browser…).
+//  Whether media is playing anywhere on the Mac (Music, Spotify, a browser…),
+//  and what: the track's title and artist, and the app playing it.
 //  macOS only tells Apple-signed processes, so the question is asked by
 //  NowPlayingHelper.dylib running inside /usr/bin/perl; see NowPlayingHelper.m.
 //  Started on first use and kept running; the helper exits when Stripe does.
@@ -12,11 +13,15 @@ import Foundation
 
 final class NowPlaying {
     static let shared = NowPlaying()
-    /// Posted on the main queue when `isPlaying` changes.
+    /// Posted on the main queue when anything here changes.
     static let didChange = Notification.Name("com.ilfforever.stripe.nowPlayingDidChange")
 
     /// Nil until the helper has answered (or if it can't run).
     private(set) var isPlaying: Bool?
+    /// The current track, if any (paused ones too), and the app playing it.
+    private(set) var title = ""
+    private(set) var artist = ""
+    private(set) var appPID: pid_t = 0
 
     private var process: Process?
     private var restarts = 0
@@ -60,10 +65,18 @@ final class NowPlaying {
         while let newline = buffer.firstIndex(of: "\n") {
             let line = buffer[..<newline]
             buffer.removeSubrange(...newline)
-            guard line.hasPrefix("playing ") else { continue }
-            let playing = line.hasSuffix("1")
-            if playing != isPlaying {
-                isPlaying = playing
+            if line.hasPrefix("playing ") {
+                let playing = line.hasSuffix("1")
+                if playing != isPlaying {
+                    isPlaying = playing
+                    NotificationCenter.default.post(name: NowPlaying.didChange, object: self)
+                }
+            } else if line.hasPrefix("info "),
+                      let data = line.dropFirst(5).data(using: .utf8),
+                      let info = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                title = info["title"] as? String ?? ""
+                artist = info["artist"] as? String ?? ""
+                appPID = pid_t((info["pid"] as? NSNumber)?.int32Value ?? 0)
                 NotificationCenter.default.post(name: NowPlaying.didChange, object: self)
             }
         }

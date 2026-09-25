@@ -181,11 +181,16 @@ final class AppEnergy {
 
     private var previous: [pid_t: UInt64] = [:]
     private var previousTime: Date?
-    private var icons: [String: NSImage] = [:]
+    /// Which app each process belongs to (nil: none); processes don't move between apps.
+    private var owners: [pid_t: (String, String)?] = [:]
+    /// Shared by every sampler, so reopening the panel doesn't look the icons up again.
+    private static var icons: [String: NSImage] = [:]
+    private static let iconLock = NSLock()
 
-    /// Power per app since the last call, heaviest first. The first call only
-    /// takes a baseline and returns nothing.
-    func sample() -> [Usage] {
+    /// Power per app since the last call, heaviest first, with icons for the
+    /// first `limit`. The first call only takes a baseline and returns nothing.
+    /// Safe to call off the main thread, one call at a time per sampler.
+    func sample(limit: Int = .max) -> [Usage] {
         var pids = [pid_t](repeating: 0, count: 4096)
         let count = Int(proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size)))
         let now = Date()
@@ -206,15 +211,19 @@ final class AppEnergy {
             current[pid] = info.ri_energy_nj
             guard elapsed > 0, let before = previous[pid], info.ri_energy_nj >= before else { continue }
             let watts = Double(info.ri_energy_nj - before) / 1e9 / elapsed
-            guard watts > 0, let (name, path) = AppEnergy.app(of: pid) else { continue }
+            guard watts > 0 else { continue }
+            if owners[pid] == nil { owners[pid] = .some(AppEnergy.app(of: pid)) }
+            guard let (name, path) = owners[pid] ?? nil else { continue }
             byApp[name, default: (0, path)].watts += watts
         }
         previous = current
         previousTime = now
+        owners = owners.filter { current[$0.key] != nil } // forget processes that have exited
 
-        return byApp
-            .map { Usage(name: $0.key, icon: icon(for: $0.value.path), watts: $0.value.watts) }
-            .sorted { $0.watts > $1.watts }
+        let sorted = byApp.sorted { $0.value.watts > $1.value.watts }
+        return sorted.enumerated().map { index, entry in
+            Usage(name: entry.key, icon: index < limit ? AppEnergy.icon(for: entry.value.path) : nil, watts: entry.value.watts)
+        }
     }
 
     /// The app a process belongs to: helpers inside Google Chrome.app count as
@@ -229,7 +238,9 @@ final class AppEnergy {
         return ((appPath as NSString).lastPathComponent.replacingOccurrences(of: ".app", with: ""), appPath)
     }
 
-    private func icon(for path: String) -> NSImage? {
+    private static func icon(for path: String) -> NSImage? {
+        iconLock.lock()
+        defer { iconLock.unlock() }
         if let cached = icons[path] { return cached }
         let icon = NSWorkspace.shared.icon(forFile: path)
         icon.size = NSSize(width: 18, height: 18)
