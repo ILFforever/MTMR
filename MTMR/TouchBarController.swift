@@ -127,7 +127,13 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
                 actions: [
                     Action(trigger: .singleTap, value: .custom(closure: { [weak self] in
                         guard let `self` = self else { return }
-                        self.reloadPreset(path: self.lastPresetPath)
+                        // Closing a folder: back to the main bar, which stops the folder's items.
+                        // Anywhere else, "close" reloads the preset, as it always has.
+                        if GroupBarItem.shown != nil {
+                            self.restoreMainBar()
+                        } else {
+                            self.reloadPreset(path: self.lastPresetPath)
+                        }
                     }))
                 ],
                 legacyAction: .none,
@@ -428,6 +434,10 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
 
     /// Returns from a sub-bar to the main bar.
     func restoreMainBar() {
+        if let folder = GroupBarItem.shown {
+            GroupBarItem.shown = nil
+            folder.tearDown()
+        }
         touchBar.delegate = self
         touchBar.defaultItemIdentifiers = []
         touchBar.defaultItemIdentifiers = [basicViewIdentifier]
@@ -539,6 +549,14 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             barItem = UpNextScrubberTouchBarItem(identifier: identifier, interval: 60, from: from, to: to, maxToShow: maxToShow, autoResize: autoResize)
         }
 
+        // The preset's actions replace the item's own for the same trigger (e.g. a
+        // single-tap action on the battery replaces switching to time remaining).
+        if let button = barItem as? CustomButtonTouchBarItem {
+            var triggers = Set(item.actions.map { $0.trigger })
+            if case .none = item.legacyAction {} else { triggers.insert(.singleTap) }
+            if case .none = item.legacyLongAction {} else { triggers.insert(.longTap) }
+            button.actions.removeAll { triggers.contains($0.trigger) }
+        }
         if let action = self.action(forItem: item), let item = barItem as? CustomButtonTouchBarItem {
             item.actions.append(ItemAction(trigger: .singleTap, action))
         }
@@ -565,6 +583,7 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             item.image = source.image
         }
         if case let .style(style)? = item.additionalParameters[.style] {
+            (barItem as? HasSliderDetents)?.detents.style = style.haptic
             if let item = barItem as? CustomButtonTouchBarItem {
                 item.style = style
             } else if let item = barItem as? NSPopoverTouchBarItem, let symbolImage = style.symbolImage {

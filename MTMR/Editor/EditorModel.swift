@@ -405,12 +405,14 @@ struct ItemTypeInfo {
     /// Swipe gestures aren't drawn on the bar.
     var isVisibleOnBar: Bool { type != "swipe" }
     /// Buttons (and popovers, which are buttons) take the full set of styling options.
-    var supportsButtonStyling: Bool { !["group", "cluster", "volume", "brightness", "swipe"].contains(type) }
+    /// Buttons (popovers and folders are buttons too). Dock and Up Next are scrolling strips.
+    var supportsButtonStyling: Bool { !["cluster", "volume", "brightness", "swipe", "dock", "upnext"].contains(type) }
     /// Clusters take a background and shape for the key their items share.
     var supportsBackground: Bool { supportsButtonStyling || type == "cluster" }
-    /// Groups show just an icon or title for their collapsed button.
-    var supportsIcon: Bool { supportsButtonStyling || type == "group" }
-    var supportsActions: Bool { !isContainer && !["volume", "brightness", "swipe"].contains(type) }
+    var supportsIcon: Bool { supportsButtonStyling }
+    var supportsActions: Bool { !isContainer && !["volume", "brightness", "swipe", "dock", "upnext"].contains(type) }
+    /// Volume and brightness sliders, which tick as they're dragged.
+    var isSlider: Bool { type == "volume" || type == "brightness" }
     /// What "active" means for items that know their own on/off state.
     var builtInActiveState: String? {
         switch type {

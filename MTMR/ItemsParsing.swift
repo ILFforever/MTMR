@@ -41,9 +41,25 @@ struct BarItemDefinition: Decodable {
         var additionalParameters = try GeneralParameters(from: decoder).parameters
 
         if let result = try? parametersDecoder(decoder),
-            case let (itemType, actions, action, longAction, parameters) = result {
+            case let (itemType, builtIn, action, longAction, parameters) = result {
             parameters.forEach { additionalParameters[$0] = $1 }
-            self.init(type: itemType, actions: actions, action: action, legacyLongAction: longAction, additionalParameters: additionalParameters)
+            var merged = builtIn, legacy = action, legacyLong = longAction
+            // The preset's actions replace an item's own for the same trigger. Keys with a
+            // fixed action (escape, media keys, mute…) come back from their decoder with
+            // only that action, so the preset's are merged in here; other types already
+            // come back with the preset's.
+            if SupportedTypesHolder.sharedInstance.hasFixedActions(type) {
+                let userActions = actions ?? []
+                let userAction = (try? LegacyActionType(from: decoder)) ?? .none
+                let userLongAction = (try? LegacyLongActionType(from: decoder)) ?? .none
+                var overridden = Set(userActions.map { $0.trigger })
+                if case .none = userAction {} else { overridden.insert(.singleTap) }
+                if case .none = userLongAction {} else { overridden.insert(.longTap) }
+                merged = builtIn.filter { !overridden.contains($0.trigger) } + userActions
+                if case .none = legacy { legacy = userAction }
+                if case .none = legacyLong { legacyLong = userLongAction }
+            }
+            self.init(type: itemType, actions: merged, action: legacy, legacyLongAction: legacyLong, additionalParameters: additionalParameters)
         } else {
             self.init(type: .staticButton(title: "unknown"), actions: [], action: .none, legacyLongAction: .none, additionalParameters: additionalParameters)
         }
@@ -236,6 +252,11 @@ class SupportedTypesHolder {
             legacyLongAction: try LegacyLongActionType(from: decoder),
             parameters: [:]
         ) }
+    }
+
+    /// Types whose decoder supplies their action (escape, the media keys…) rather than the preset.
+    func hasFixedActions(_ type: String) -> Bool {
+        return supportedTypes[type] != nil
     }
 
     func register(typename: String, decoder: @escaping ParametersDecoder) {

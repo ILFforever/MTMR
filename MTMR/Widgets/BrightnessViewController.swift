@@ -3,7 +3,8 @@ import AVFoundation
 import Cocoa
 import CoreAudio
 
-class BrightnessViewController: NSCustomTouchBarItem, SlidableItem, TearDownable {
+class BrightnessViewController: NSCustomTouchBarItem, SlidableItem, TearDownable, HasSliderDetents {
+    let detents = SliderDetents()
     private var timer: Timer?
 
     private(set) var sliderItem: CustomSlider!
@@ -54,12 +55,14 @@ class BrightnessViewController: NSCustomTouchBarItem, SlidableItem, TearDownable
             let clamped = min(max(newValue, 0), 1)
             setBrightness(level: Float(clamped))
             sliderItem.floatValue = Float(clamped * 100)
+            detents.update(clamped)
         }
     }
 
     @objc func sliderValueChanged(_ sender: Any) {
         if let sliderItem = sender as? NSSlider {
             setBrightness(level: Float32(sliderItem.intValue) / 100.0)
+            detents.update(Double(sliderItem.intValue) / 100)
         }
     }
 

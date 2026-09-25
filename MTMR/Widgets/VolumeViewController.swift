@@ -3,7 +3,8 @@ import AVFoundation
 import Cocoa
 import CoreAudio
 
-class VolumeViewController: NSCustomTouchBarItem, SlidableItem, TearDownable {
+class VolumeViewController: NSCustomTouchBarItem, SlidableItem, TearDownable, HasSliderDetents {
+    let detents = SliderDetents()
     // Stored so tearDown() can remove exactly these blocks; they hold the item weakly.
     private lazy var routeListener: AudioObjectPropertyListenerBlock = { [weak self] count, addresses in
         self?.audioRouteChanged(numberAddresses: count, addresses: addresses)
@@ -105,12 +106,14 @@ class VolumeViewController: NSCustomTouchBarItem, SlidableItem, TearDownable {
             let clamped = min(max(newValue, 0), 1)
             _ = setInputGain(Float32(clamped))
             sliderItem.floatValue = Float(clamped * 100)
+            detents.update(clamped)
         }
     }
 
     @objc func sliderValueChanged(_ sender: Any) {
         if let sliderItem = sender as? NSSlider {
             _ = setInputGain(Float32(sliderItem.intValue) / 100.0)
+            detents.update(Double(sliderItem.intValue) / 100)
         }
     }
 

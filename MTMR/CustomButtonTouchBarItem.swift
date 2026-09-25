@@ -57,6 +57,7 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
         multiClick.isDoubleClickEnabled = false
         multiClick.isTripleClickEnabled = false
         multiClick.onTouch = { [weak self] down in self?.isPressed = down }
+        multiClick.handlesReleaseHaptic = { [weak self] in self?.armToggleFeel() ?? false }
 
         reinstallButton()
         button.attributedTitle = displayedTitle
@@ -86,13 +87,44 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
     /// Whether the item is on (a toggle that's enabled, or its "activeWhen" rule
     /// holds); shows `style.activeBackground`.
     var isActive = false {
-        didSet { if isActive != oldValue { applyStateBackground() } }
+        didSet {
+            guard isActive != oldValue else { return }
+            applyStateBackground()
+            applyActiveLook()
+            playToggleFeelIfArmed()
+        }
     }
 
     /// For items that know their own state: sets `isActive` unless the preset
     /// decides it with an "activeWhen" rule.
     func setBuiltInActive(_ active: Bool) {
+        hasOnOffState = true
         if style.activeWhen == nil { isActive = active }
+    }
+
+    // MARK: Toggle feel
+
+    /// Whether the item has an on/off state: a toggle that reports it, or an "activeWhen" rule.
+    private var hasOnOffState = false
+    /// Until when a tap's release is waiting for the toggle to report its new state.
+    private var toggleFeelArmedUntil = Date.distantPast
+
+    /// A toggle's release buzzes by what the tap did (its on or off feel)
+    /// once its state changes, instead of the usual release tick. Returns
+    /// whether it will, so the plain tick is skipped.
+    private func armToggleFeel() -> Bool {
+        let haptic = style.haptic
+        guard hasOnOffState || style.activeWhen != nil, haptic.toggleFeel,
+              haptic.when == .both || haptic.when == .release else { return false }
+        // Scripted "activeWhen" checks can take a few seconds to report back.
+        toggleFeelArmedUntil = Date().addingTimeInterval(style.activeWhen == nil ? 1.5 : 4)
+        return true
+    }
+
+    private func playToggleFeelIfArmed() {
+        guard Date() < toggleFeelArmedUntil else { return }
+        toggleFeelArmedUntil = .distantPast
+        HapticFeedback.instance.play(style.haptic.toggleFeel(turnedOn: isActive))
     }
 
     /// True while a finger is on the item; shows `style.pressedBackground`.
@@ -109,17 +141,41 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
 
     var style = ItemStyle() {
         didSet {
+            multiClick.haptic = style.haptic
+            longClick.haptic = style.haptic
             if let symbolImage = style.symbolImage {
                 image = symbolImage
             }
             reinstallButton()
             button.attributedTitle = displayedTitle
+            if isActive { applyActiveLook() }
         }
     }
 
     /// The title as drawn: `attributedTitle` with the item's style applied.
     var displayedTitle: NSAttributedString {
+        if isActive {
+            let title = style.activeTitle.map { $0.defaultTouchbarAttributedString } ?? attributedTitle
+            return style.whileActive.apply(to: title)
+        }
         return style.apply(to: attributedTitle)
+    }
+
+    /// The icon as drawn: while on, the "activeSymbol" (if set) in place of the
+    /// item's own, or the item's own icon in "activeIconColor".
+    private var displayedImage: NSImage? {
+        guard isActive else { return image }
+        if style.activeSymbol != nil, let symbol = style.whileActive.symbolImage { return symbol }
+        if let color = style.activeIconColor, let image = image, image.isTemplate { return image.tinted(color) }
+        return image
+    }
+
+    /// Shows the on or off look: title, icon, and the icon tint for icons the item draws itself.
+    private func applyActiveLook() {
+        guard let button = button else { return }
+        button.image = displayedImage
+        button.attributedTitle = displayedTitle
+        button.imagePosition = displayedTitle.length > 0 ? .imageLeading : .imageOnly
     }
 
     var title: String {
@@ -133,7 +189,9 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
 
     var attributedTitle: NSAttributedString {
         didSet {
-            button?.imagePosition = attributedTitle.length > 0 ? .imageLeading : .imageOnly
+            // Widgets often set the same title again (a clock every second); skip the redraw.
+            guard !attributedTitle.isEqual(to: oldValue) else { return }
+            button?.imagePosition = displayedTitle.length > 0 ? .imageLeading : .imageOnly
             button?.attributedTitle = displayedTitle
             if isAwaitingFirstTitle, attributedTitle.length > 0 { reveal() }
         }
@@ -162,7 +220,7 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
 
     var image: NSImage? {
         didSet {
-            button.image = image
+            button.image = displayedImage
         }
     }
 
@@ -376,6 +434,10 @@ final class MultiClickGestureRecognizer: NSClickGestureRecognizer {
     public var isTripleClickEnabled = true
     /// Called with true when a touch starts and false when it ends.
     var onTouch: ((Bool) -> Void)?
+    /// How touches buzz; the item sets it from its style.
+    var haptic = HapticStyle()
+    /// Lets the item play its own release buzz (a toggle's on/off feel); returns true if it will.
+    var handlesReleaseHaptic: (() -> Bool)?
 
     override var action: Selector? {
         get {
@@ -399,7 +461,7 @@ final class MultiClickGestureRecognizer: NSClickGestureRecognizer {
     }
     
     override func touchesBegan(with event: NSEvent) {
-        HapticFeedback.instance.tap(type: .click)
+        HapticFeedback.instance.play(haptic, .press)
         onTouch?(true)
         super.touchesBegan(with: event)
     }
@@ -410,7 +472,9 @@ final class MultiClickGestureRecognizer: NSClickGestureRecognizer {
     }
 
     override func touchesEnded(with event: NSEvent) {
-        HapticFeedback.instance.tap(type: .back)
+        if handlesReleaseHaptic?() != true {
+            HapticFeedback.instance.play(haptic, .release)
+        }
         onTouch?(false)
         super.touchesEnded(with: event)
         _clickCount += 1
@@ -450,6 +514,8 @@ final class MultiClickGestureRecognizer: NSClickGestureRecognizer {
 
 class LongPressGestureRecognizer: NSPressGestureRecognizer {
     var recognizeTimeout = 0.4
+    /// How touches buzz; the item sets it from its style.
+    var haptic = HapticStyle()
     private var timer: Timer?
     
     override func touchesBegan(with event: NSEvent) {
@@ -488,7 +554,7 @@ class LongPressGestureRecognizer: NSPressGestureRecognizer {
     @objc private func onTimer() {
         if let target = self.target, let action = self.action {
             target.performSelector(onMainThread: action, with: self, waitUntilDone: false)
-            HapticFeedback.instance.tap(type: .strong)
+            HapticFeedback.instance.play(haptic, .hold)
         }
     }
     
@@ -502,5 +568,19 @@ extension String {
         let attrTitle = NSMutableAttributedString(string: self, attributes: [.foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 15, weight: .regular), .baselineOffset: 1])
         attrTitle.setAlignment(.center, range: NSRange(location: 0, length: count))
         return attrTitle
+    }
+}
+
+extension NSImage {
+    /// A template image drawn in `color`. (The Touch Bar ignores a button's tint color.)
+    func tinted(_ color: NSColor) -> NSImage {
+        let image = NSImage(size: size, flipped: false) { rect in
+            self.draw(in: rect)
+            color.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        image.isTemplate = false
+        return image
     }
 }

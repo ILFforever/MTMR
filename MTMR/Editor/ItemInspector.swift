@@ -23,6 +23,8 @@ struct ItemInspector: View {
     @AppStorage("inspector.visibility") private var visibilityOpen = false
     @AppStorage("inspector.json") private var jsonOpen = false
     @AppStorage("inspector.batteryPanel") private var batteryPanelOpen = true
+    @AppStorage("inspector.haptics") private var hapticsOpen = false
+    @AppStorage("inspector.onState") private var onStateOpen = false
 
     var body: some View {
         ScrollView {
@@ -70,10 +72,6 @@ struct ItemInspector: View {
                         }
                         if item.info.supportsButtonStyling {
                             ColorRow(label: "Pressed color", value: string("pressedBackground"), suggested: "#636366")
-                            ColorRow(label: "Active color", value: string("activeBackground"), suggested: "#30D158")
-                            if item[string: "activeBackground"] != nil {
-                                activeRules
-                            }
                             NumberFieldRow(label: "Font size", placeholder: "15", value: number("fontSize"))
                             ChoiceRow(label: "Font weight",
                                       options: ["ultralight", "thin", "light", "regular", "medium", "semibold", "bold", "heavy", "black"],
@@ -84,6 +82,27 @@ struct ItemInspector: View {
                         }
                         NumberFieldRow(label: "Width", placeholder: "Automatic", help: "In points; the bar is about 1000 wide",
                                        value: number("width"))
+                    }
+                }
+
+                if item.info.supportsButtonStyling {
+                    InspectorSection(title: "On state", symbol: "power", isExpanded: $onStateOpen) {
+                        activeRules
+                        ColorRow(label: "Background", value: string("activeBackground"), suggested: "#30D158")
+                        SymbolRow(label: "Icon", value: string("activeSymbol"))
+                        ColorRow(label: "Icon color", value: string("activeIconColor"), suggested: "#FFFFFF")
+                        ColorRow(label: "Text color", value: string("activeTextColor"), suggested: "#FFFFFF")
+                        TextFieldRow(label: "Title", placeholder: "Same as off", text: string("activeTitle"))
+                    }
+                }
+
+                if item.info.supportsButtonStyling {
+                    InspectorSection(title: "Haptics", symbol: "waveform", isExpanded: $hapticsOpen) {
+                        HapticsEditor(item: item)
+                    }
+                } else if item.info.isSlider {
+                    InspectorSection(title: "Haptics", symbol: "waveform", isExpanded: $hapticsOpen) {
+                        SliderHapticsEditor(item: item)
                     }
                 }
 
@@ -115,16 +134,16 @@ struct ItemInspector: View {
         }
     }
 
-    /// When the active color shows: toggles know when they're on; other items
-    /// take the same kind of rules as Visibility.
+    /// When the item is on: toggles know it themselves; other items take the
+    /// same kind of rules as Visibility.
     @ViewBuilder
     private var activeRules: some View {
         if let state = item.info.builtInActiveState {
-            Text("Shows while \(state).")
+            Text("On while \(state). These settings change how it looks then; anything left blank looks as it does when off.")
                 .font(.caption).foregroundColor(.secondary)
                 .padding(.vertical, 6)
         } else {
-            Text("Shows while all of these are true. Leave them blank and it never shows.")
+            Text("On while all of these are true (leave them all blank and it's never on). The settings below change how it looks then.")
                 .font(.caption).foregroundColor(.secondary)
                 .padding(.vertical, 6)
             AppRuleRow(label: "App is", placeholder: "Any app", text: string("activeWhen.app"))
@@ -642,5 +661,178 @@ private struct ChildRow: View {
                 .buttonStyle(.borderless).help("Remove")
         }
         .padding(.vertical, 7)
+    }
+}
+
+// MARK: - Haptics
+
+/// When and how an item buzzes under a finger, with a button to feel it on the
+/// trackpad (the Touch Bar's haptics come from the same actuator).
+struct HapticsEditor: View {
+    @ObservedObject var item: EditorItem
+
+    private var when: String { item[string: "haptic"] ?? "both" }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            FieldRow(label: "Buzz on", help: when == "both" ? "A click on press, a lighter tick on release" : nil) {
+                Picker("", selection: Binding(get: { when }, set: { item[string: "haptic"] = $0 == "both" ? nil : $0 })) {
+                    Text("Press and release").tag("both")
+                    Text("Press").tag("press")
+                    Text("Release").tag("release")
+                    Text("Off").tag("off")
+                }
+                .pickerStyle(.segmented).labelsHidden().fixedSize()
+            }
+            Group {
+                FieldRow(label: "Strength") {
+                    Picker("", selection: Binding(get: { item[string: "hapticStrength"] ?? "" },
+                                                  set: { item[string: "hapticStrength"] = $0 })) {
+                        Text("Default").tag("")
+                        Text("Light").tag("light")
+                        Text("Medium").tag("medium")
+                        Text("Strong").tag("strong")
+                    }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+                }
+                FieldRow(label: "Pattern") {
+                    Picker("", selection: Binding(get: { item[string: "hapticPattern"] ?? "single" },
+                                                  set: { item[string: "hapticPattern"] = $0 == "single" ? nil : $0 })) {
+                        Text("Single").tag("single")
+                        Text("Double").tag("double")
+                        Text("Triple").tag("triple")
+                    }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+                }
+                FieldRow(label: "Try it", help: "Plays on the trackpad") {
+                    Button(action: test) { Label("Press and release", systemImage: "hand.tap") }
+                }
+                if hasOnOffState {
+                    ToggleRow(label: "Toggle feel", help: "A tap's release buzzes by whether it turned the item on or off",
+                              defaultValue: true,
+                              value: Binding(get: { item[bool: "hapticToggle"] },
+                                             set: { item[bool: "hapticToggle"] = $0 == false ? false : nil }))
+                    if item[bool: "hapticToggle"] != false {
+                        feelRows(title: "When turned on", strengthKey: "hapticOnStrength", patternKey: "hapticOnPattern",
+                                 defaultStrength: "strong", on: true)
+                        feelRows(title: "When turned off", strengthKey: "hapticOffStrength", patternKey: "hapticOffPattern",
+                                 defaultStrength: "light", on: false)
+                    }
+                }
+            }
+            .disabled(when == "off")
+            .opacity(when == "off" ? 0.45 : 1)
+            if !AppSettings.hapticFeedbackState {
+                Text("Haptic feedback is off for all items in Stripe's menu-bar menu.")
+                    .font(.caption).foregroundColor(.secondary)
+                    .padding(.vertical, 8)
+            }
+        }
+    }
+
+    /// Toggles and items with an "Active when" rule buzz by what a tap did.
+    private var hasOnOffState: Bool {
+        item.info.builtInActiveState != nil || item.fields["activeWhen"] != nil
+    }
+
+    private var style: HapticStyle {
+        HapticStyle(when: item[string: "haptic"], strength: item[string: "hapticStrength"],
+                    pattern: item[string: "hapticPattern"],
+                    onStrength: item[string: "hapticOnStrength"], onPattern: item[string: "hapticOnPattern"],
+                    offStrength: item[string: "hapticOffStrength"], offPattern: item[string: "hapticOffPattern"])
+    }
+
+    /// Strength and pattern for turning on (or off), with a button to feel that tap.
+    @ViewBuilder
+    private func feelRows(title: String, strengthKey: String, patternKey: String, defaultStrength: String, on: Bool) -> some View {
+        FieldRow(label: title) {
+            HStack(spacing: 8) {
+                Picker("", selection: Binding(get: { item[string: strengthKey] ?? defaultStrength },
+                                              set: { item[string: strengthKey] = $0 == defaultStrength ? nil : $0 })) {
+                    Text("Light").tag("light")
+                    Text("Medium").tag("medium")
+                    Text("Strong").tag("strong")
+                }
+                .pickerStyle(.segmented).labelsHidden().fixedSize()
+                Picker("", selection: Binding(get: { item[string: patternKey] ?? "single" },
+                                              set: { item[string: patternKey] = $0 == "single" ? nil : $0 })) {
+                    Text("Single").tag("single")
+                    Text("Double").tag("double")
+                    Text("Triple").tag("triple")
+                }
+                .pickerStyle(.segmented).labelsHidden().fixedSize()
+                Button(action: { play(toggle: on) }) { Image(systemName: "hand.tap") }
+                    .help("Feel it on the trackpad")
+            }
+        }
+    }
+
+    private func test() {
+        let style = self.style
+        HapticFeedback.instance.play(style, .press)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { HapticFeedback.instance.play(style, .release) }
+    }
+
+    /// A tap that turns the toggle on or off: the press, then the on/off feel.
+    private func play(toggle on: Bool) {
+        let style = self.style
+        HapticFeedback.instance.play(style, .press)
+        HapticFeedback.instance.play(style.toggleFeel(turnedOn: on), after: 0.35)
+    }
+}
+
+/// Detents for the volume and brightness sliders: a tick at evenly spaced
+/// marks as they're dragged, and a firmer one at either end.
+struct SliderHapticsEditor: View {
+    @ObservedObject var item: EditorItem
+
+    private var on: Bool { item[string: "haptic"] != "off" }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ToggleRow(label: "Detents", help: "A tick as the slider passes each mark, firmer at either end",
+                      defaultValue: true,
+                      value: Binding(get: { on }, set: { item[string: "haptic"] = $0 == false ? "off" : nil }))
+            Group {
+                FieldRow(label: "Every") {
+                    Picker("", selection: Binding(get: { Int(item[number: "hapticStep"] ?? 10) },
+                                                  set: { item[number: "hapticStep"] = $0 == 10 ? nil : Double($0) })) {
+                        Text("5%").tag(5)
+                        Text("10%").tag(10)
+                        Text("25%").tag(25)
+                    }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+                }
+                FieldRow(label: "Strength") {
+                    Picker("", selection: Binding(get: { item[string: "hapticStrength"] ?? "" },
+                                                  set: { item[string: "hapticStrength"] = $0 })) {
+                        Text("Default").tag("")
+                        Text("Light").tag("light")
+                        Text("Medium").tag("medium")
+                        Text("Strong").tag("strong")
+                    }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+                }
+                FieldRow(label: "Try it", help: "A drag from 0 to 50%, on the trackpad") {
+                    Button(action: test) { Label("Drag", systemImage: "slider.horizontal.3") }
+                }
+            }
+            .disabled(!on)
+            .opacity(on ? 1 : 0.45)
+        }
+    }
+
+    private func test() {
+        let style = HapticStyle(when: item[string: "haptic"], strength: item[string: "hapticStrength"], pattern: nil,
+                                step: item[number: "hapticStep"])
+        let detents = SliderDetents()
+        detents.style = style
+        // Half the range in small steps, like a finger sliding.
+        let steps = 50
+        for index in 0 ... steps {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02 * Double(index)) {
+                detents.update(Double(index) / Double(steps) * 0.5)
+            }
+        }
     }
 }

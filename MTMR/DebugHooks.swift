@@ -38,7 +38,7 @@ enum DebugHooks {
         case "popover":
             (items.first { $0 is PopoverBarItem } as? PopoverBarItem)?.expand()
         case "group":
-            (items.first { $0 is GroupBarItem } as? GroupBarItem)?.showPopover(nil)
+            (items.first { $0 is GroupBarItem } as? GroupBarItem)?.open()
         case "settings":
             SettingsWindowController.shared.show()
         case let select where select.hasPrefix("select "):

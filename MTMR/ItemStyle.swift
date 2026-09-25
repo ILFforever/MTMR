@@ -11,6 +11,12 @@
 //    "pressedBackground": "#636366"                 // while touched
 //    "activeBackground": "green",                   // while the item is on:
 //    "activeWhen": { "app": "Safari" }              //   toggles know; other items use a rule
+//    "activeSymbol": "speaker.slash.fill", "activeIconColor": "red",   // and look different while on:
+//    "activeTextColor": "#FFFFFF", "activeTitle": "Muted"               // icon, colors, title
+//    "haptic": "press", "hapticStrength": "strong", "hapticPattern": "double"
+//    "hapticToggle": false          // toggles: no on/off feel;  "hapticStep": 5   // sliders: detent every 5%
+//    "hapticOnStrength": "strong", "hapticOnPattern": "double",   // toggles: the buzz for turning on…
+//    "hapticOffStrength": "light", "hapticOffPattern": "single",  // …and for turning off
 //
 
 import AppKit
@@ -28,6 +34,11 @@ struct ItemStyle {
     /// When the item counts as on, for items that don't know it themselves
     /// (toggles like Do Not Disturb do). Same rules as "when".
     var activeWhen: ItemCondition?
+    var activeSymbol: String?
+    var activeIconColor: NSColor?
+    var activeTextColor: NSColor?
+    var activeTitle: String?
+    var haptic = HapticStyle()
 
     static let barHeight: CGFloat = 30
     static let defaultFontSize: CGFloat = 15
@@ -64,6 +75,15 @@ struct ItemStyle {
         return result
     }
 
+    /// This style as it looks while the item is on: its "active…" keys in place of the usual ones.
+    var whileActive: ItemStyle {
+        var active = self
+        if let symbol = activeSymbol { active.symbol = symbol }
+        if let color = activeIconColor { active.iconColor = color }
+        if let color = activeTextColor { active.textColor = color }
+        return active
+    }
+
     /// The SF Symbol icon, sized to sit alongside the title text.
     var symbolImage: NSImage? {
         guard let symbol = symbol,
@@ -71,7 +91,9 @@ struct ItemStyle {
         var config = NSImage.SymbolConfiguration(pointSize: (fontSize ?? ItemStyle.defaultFontSize) + 1,
                                                  weight: fontWeight ?? .regular)
         if let iconColor = iconColor {
-            config = config.applying(NSImage.SymbolConfiguration(paletteColors: [iconColor]))
+            // Hierarchical, not a flat palette: a filled symbol (speaker.slash.circle.fill)
+            // keeps its glyph visible against a lighter shade of the same color.
+            config = config.applying(NSImage.SymbolConfiguration(hierarchicalColor: iconColor))
         }
         let image = base.withSymbolConfiguration(config)
         image?.isTemplate = iconColor == nil // template images render white on the Touch Bar
@@ -83,6 +105,9 @@ extension ItemStyle: Decodable {
     private enum CodingKeys: String, CodingKey {
         case fontSize, fontWeight, textColor, monospacedDigits, cornerRadius, symbol, iconColor, style
         case pressedBackground, activeBackground, activeWhen
+        case activeSymbol, activeIconColor, activeTextColor, activeTitle
+        case haptic, hapticStrength, hapticPattern, hapticToggle, hapticStep
+        case hapticOnStrength, hapticOnPattern, hapticOffStrength, hapticOffPattern
     }
 
     init(from decoder: Decoder) throws {
@@ -97,6 +122,19 @@ extension ItemStyle: Decodable {
         pressedBackground = try c.decodeIfPresent(String.self, forKey: .pressedBackground)?.namedOrHexColor
         activeBackground = try c.decodeIfPresent(String.self, forKey: .activeBackground)?.namedOrHexColor
         activeWhen = try c.decodeIfPresent(ItemCondition.self, forKey: .activeWhen)
+        activeSymbol = try c.decodeIfPresent(String.self, forKey: .activeSymbol)
+        activeIconColor = try c.decodeIfPresent(String.self, forKey: .activeIconColor)?.namedOrHexColor
+        activeTextColor = try c.decodeIfPresent(String.self, forKey: .activeTextColor)?.namedOrHexColor
+        activeTitle = try c.decodeIfPresent(String.self, forKey: .activeTitle)
+        haptic = HapticStyle(when: try c.decodeIfPresent(String.self, forKey: .haptic),
+                             strength: try c.decodeIfPresent(String.self, forKey: .hapticStrength),
+                             pattern: try c.decodeIfPresent(String.self, forKey: .hapticPattern),
+                             toggle: try c.decodeIfPresent(Bool.self, forKey: .hapticToggle),
+                             step: try c.decodeIfPresent(Double.self, forKey: .hapticStep),
+                             onStrength: try c.decodeIfPresent(String.self, forKey: .hapticOnStrength),
+                             onPattern: try c.decodeIfPresent(String.self, forKey: .hapticOnPattern),
+                             offStrength: try c.decodeIfPresent(String.self, forKey: .hapticOffStrength),
+                             offPattern: try c.decodeIfPresent(String.self, forKey: .hapticOffPattern))
         if try c.decodeIfPresent(String.self, forKey: .style) == "pill", cornerRadius == nil {
             cornerRadius = ItemStyle.barHeight / 2
         }

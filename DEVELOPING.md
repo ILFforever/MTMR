@@ -50,7 +50,8 @@ keeps the permission across rebuilds. Without it, builds fall back to ad-hoc.
 | `.../Stripe/apps/<bundle-id>.json` | Per-app presets |
 | `MTMR/TouchBarController.swift` | Builds and shows the bar |
 | `MTMR/ItemsParsing.swift` | Preset JSON → item definitions |
-| `MTMR/ItemStyle.swift` | Per-item styling keys |
+| `MTMR/ItemStyle.swift` | Per-item styling, on-state and haptic keys |
+| `ITEMS.md` | Rulebook: each kind of item, its states, and which keys apply |
 | `MTMR/Conditions.swift` | `"when"` visibility conditions |
 | `MTMR/Widgets/` | Items (battery, popover, mute, network…) |
 | `MTMR/Editor/` | The Settings window (SwiftUI) |
