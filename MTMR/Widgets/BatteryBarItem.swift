@@ -133,6 +133,13 @@ class BatteryBarItem: CustomButtonTouchBarItem, TearDownable {
         let display = self.display
         let showPercentInside = display.icon && display.percentage && options.percentInside
 
+        guard theme.drawnBattery else {
+            // The MTMR theme: MTMR's text battery.
+            image = nil
+            attributedTitle = mtmrTitle
+            updateAnimation()
+            return
+        }
         image = display.icon ? batteryIcon(percentInside: showPercentInside) : nil
 
         var parts: [String] = []
@@ -146,6 +153,24 @@ class BatteryBarItem: CustomButtonTouchBarItem, TearDownable {
         attributedTitle = title
 
         updateAnimation()
+    }
+
+    /// How MTMR showed the battery: "⚡️64%" while charging, with the time
+    /// remaining small and raised beside it, and red at 10% and below.
+    private var mtmrTitle: NSAttributedString {
+        let onAC = batteryInfo.onACPower
+        let percent = batteryInfo.current
+        let minutes = onAC ? batteryInfo.timeToFull : batteryInfo.timeToEmpty
+        let color: NSColor = percent <= 10 && !onAC ? .red : .white
+        let title = NSMutableAttributedString(string: (onAC && percent < 100 ? "⚡️" : "") + "\(percent)%", attributes: [
+            .foregroundColor: color, .font: NSFont.systemFont(ofSize: 15), .baselineOffset: 1,
+        ])
+        if minutes > 0 {
+            title.append(NSAttributedString(string: String(format: " %d:%02d", minutes / 60, minutes % 60), attributes: [
+                .foregroundColor: color, .font: NSFont.systemFont(ofSize: 8), .baselineOffset: 7,
+            ]))
+        }
+        return title
     }
 
     // MARK: Icon

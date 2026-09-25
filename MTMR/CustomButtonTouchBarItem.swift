@@ -32,6 +32,8 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
     var finishViewConfiguration: ()->() = {}
     
     private var button: NSButton!
+    /// The look it was built with ("theme" on the item); kept for later refreshes.
+    let theme = Theme.current
     private var longClick: LongPressGestureRecognizer!
     private var multiClick: MultiClickGestureRecognizer!
 
@@ -204,6 +206,11 @@ class CustomButtonTouchBarItem: NSCustomTouchBarItem, NSGestureRecognizerDelegat
     /// until the first title arrives, then fade in, instead of showing a
     /// placeholder. Fades in after two seconds regardless.
     func hideUntilFirstTitle() {
+        // The MTMR theme shows "⏳" until then, as MTMR did.
+        guard theme.fadeInFirstTitle else {
+            attributedTitle = "⏳".defaultTouchbarAttributedString
+            return
+        }
         isAwaitingFirstTitle = true
         button.alphaValue = 0
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.reveal() }

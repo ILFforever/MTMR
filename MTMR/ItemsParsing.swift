@@ -744,6 +744,7 @@ enum GeneralParameter {
     case title(_: String)
     case style(_: ItemStyle)
     case when(_: ItemCondition)
+    case theme(_: Theme.Name)
 }
 
 struct GeneralParameters: Decodable {
@@ -759,11 +760,16 @@ struct GeneralParameters: Decodable {
         case matchAppId
         case style // stands for all ItemStyle keys, which are decoded together
         case when
+        case theme
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         var result: [GeneralParameters.CodingKeys: GeneralParameter] = [:]
+
+        if let theme = try container.decodeIfPresent(String.self, forKey: .theme).flatMap(Theme.Name.init(rawValue:)) {
+            result[.theme] = .theme(theme)
+        }
 
         result[.style] = .style(try ItemStyle(from: decoder))
 

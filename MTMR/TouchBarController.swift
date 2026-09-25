@@ -474,6 +474,11 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     }
 
     func createItem(forIdentifier identifier: NSTouchBarItem.Identifier, definition item: BarItemDefinition) -> NSTouchBarItem? {
+        // The item's own look (MTMR or Stripe), for everything it builds now; items
+        // built inside another (a group's) take their parent's unless they set one.
+        let outer = Theme.building
+        if case let .theme(name)? = item.additionalParameters[.theme] { Theme.building = Theme.named(name) }
+        defer { Theme.building = outer }
         var barItem: NSTouchBarItem!
         switch item.type {
         case let .staticButton(title: title):

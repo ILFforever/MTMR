@@ -40,7 +40,9 @@ class PlayPauseBarItem: CustomButtonTouchBarItem, TearDownable {
     private func refresh() {
         let playing = NowPlaying.shared.isPlaying
         // A custom icon from the preset stays as it is.
-        if style.symbol == nil {
+        if style.symbol == nil, !theme.litPlayPause {
+            image = PlayPauseIcon.image(lit: nil, color: .white) // MTMR's static icon
+        } else if style.symbol == nil {
             let other: PlayPauseIcon.Half = litWhilePlaying == .play ? .pause : .play
             image = PlayPauseIcon.image(lit: playing.map { $0 ? litWhilePlaying : other },
                                         color: style.iconColor ?? .white)

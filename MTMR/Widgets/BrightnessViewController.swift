@@ -14,6 +14,15 @@ class BrightnessViewController: NSCustomTouchBarItem, SlidableItem, TearDownable
 
         if image == nil {
             sliderItem = CustomSlider()
+            // The MTMR theme keeps MTMR's plain slider: the system knob, no panel or end icons.
+            // (Set first: the range and value set below live in the cell.)
+            if !Theme.current.sliderPanels {
+                sliderItem.cell = CustomSliderCell()
+                // A plain slider has no width of its own; a preset "width" still wins.
+                let width = sliderItem.widthAnchor.constraint(equalToConstant: 240)
+                width.priority = .defaultLow
+                width.isActive = true
+            }
         } else {
             sliderItem = CustomSlider(knob: image!)
         }
@@ -23,7 +32,7 @@ class BrightnessViewController: NSCustomTouchBarItem, SlidableItem, TearDownable
         sliderItem.maxValue = 100.0
         sliderItem.floatValue = getBrightness() * 100
 
-        view = image == nil ? sliderItem.withEndIcons(min: "sun.min.fill", max: "sun.max.fill") : sliderItem
+        view = image == nil && Theme.current.sliderPanels ? sliderItem.withEndIcons(min: "sun.min.fill", max: "sun.max.fill") : sliderItem
 
         let timer = Timer.scheduledTimer(timeInterval: refreshInterval, target: self, selector: #selector(BrightnessViewController.updateBrightnessSlider), userInfo: nil, repeats: true)
         RunLoop.current.add(timer, forMode: RunLoop.Mode.common)
