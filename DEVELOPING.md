@@ -81,12 +81,14 @@ object is a command:
 | `dismiss` | Return to the main bar |
 | `tap NAME` | Tap the first item whose identifier contains NAME (e.g. `tap battery`) |
 | `settings` | Open the Settings window |
-| `select N` | Select the Nth top-level item in Settings |
+| `select N` | Select the Nth top-level item in Settings (`select N.M`: the Mth item inside it) |
 | `pane NAME` | Show the Settings sidebar's `library` or `outline` |
 | `search TEXT` | Type TEXT into the Settings sidebar's search |
 | `press NAME` | Hold down the first button whose identifier or title contains NAME (shows its pressed color) |
 | `release` | Let go of every held button |
 | `battery` | Open the battery panel (`battery left`: back chevron on the left) |
+| `add TYPE` | Add an item to the end of the center, like a library double-click (`add saved:<id>` for My Items) |
+| `tab NAME` | Show an inspector tab: `item`, `style`, `behavior` or `advanced` |
 
 A one-line sender:
 
@@ -103,3 +105,32 @@ swift -e 'import Foundation; DistributedNotificationCenter.default().postNotific
   `TouchBarController.showSubBar` / `restoreMainBar`.
 - Match Apple's own Touch Bar controls. Adjust horizontal padding only (keys are
   always 30pt tall), and don't add margins at the bar's ends.
+
+## Gotchas
+
+Things that cost time to find out:
+
+- **Never do slow work on the main thread.** Apple Events (ScriptingBridge),
+  process walks and per-frame redraws froze the bar for seconds, or cost 20% CPU.
+  Measure with `sample <pid> 10` and `ps -o time= -p <pid>` over 30s.
+- **What's playing comes from MediaRemote, via the perl helper.** Since macOS
+  15.4 it only answers Apple-signed processes (see NowPlaying.swift). Don't go
+  back to asking apps and browser tabs.
+- **Animate with Core Animation, not timers.** The battery's charging sweep is a
+  layer animation; redrawing an NSImage 20 times a second was 20% CPU.
+- **The Touch Bar ignores `contentTintColor`.** Tint an icon by drawing a copy
+  (`NSImage.tinted`). Colored SF Symbols use hierarchical rendering, so filled
+  symbols keep their glyph.
+- **Haptics go through the trackpad's actuator.** It's found at runtime by
+  `ActuationSupported`; the old hard-coded device IDs only covered 2016–2020 Macs.
+- **Editor items get new ids whenever the preset reloads** (reopening Settings,
+  undo). Anything keyed by id, like the bar's hit-testing frames, has to drop
+  ids the document no longer has.
+- **On macOS, SwiftUI `Menu` ignores custom label backgrounds.** For a styled
+  button that opens a menu, use a `Button` that pops up an `NSMenu`
+  (`ClosureMenuItem`).
+- **The toolchain has no `@State` macro.** Use `State(initialValue:)` stored
+  properties with `wrappedValue` (see EditorFields.swift).
+- **Simulated input has limits.** CGEvent clicks reach AppKit and SwiftUI
+  buttons, but not SwiftUI double-tap gestures or drags. Test those paths with
+  debug hooks (`add`, `select`, `tab`), and let a person try the real gesture.

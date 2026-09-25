@@ -42,11 +42,17 @@ enum DebugHooks {
         case "settings":
             SettingsWindowController.shared.show()
         case let select where select.hasPrefix("select "):
-            // "select 3" selects the 4th top-level item in the editor.
+            // "select 3" selects the 4th top-level item in the editor; "select 3.1"
+            // the 2nd item inside it (a folder, group or popover), and so on.
             let editor = SettingsWindowController.shared
-            if let index = Int(select.dropFirst(7)), editor.document.items.indices.contains(index) {
-                editor.session.selection = editor.document.items[index].id
+            var list = editor.document.items
+            var found: EditorItem?
+            for part in select.dropFirst(7).split(separator: ".") {
+                guard let index = Int(part), list.indices.contains(index) else { found = nil; break }
+                found = list[index]
+                list = found?.children ?? []
             }
+            if let item = found { editor.session.selection = item.id }
         case let pane where pane.hasPrefix("pane "):
             // "pane outline" or "pane library" switches the editor's left pane.
             SettingsWindowController.shared.session.leftPane = String(pane.dropFirst(5))
@@ -75,6 +81,15 @@ enum DebugHooks {
             var options = (items.first { $0 is BatteryBarItem } as? BatteryBarItem)?.panelOptions ?? BatteryPanelOptions()
             if command == "battery left" { options.closeSide = .left }
             BatteryPanel.shared.open(options: options)
+        case let add where add.hasPrefix("add "):
+            // "add cpu", or "add saved:<id>" for a My Items entry: adds it to the end of the center, as a double-click in the library does.
+            let editor = SettingsWindowController.shared
+            let item = ItemCatalog.newItem(String(add.dropFirst(4)), align: "center", document: editor.document)
+            editor.document.place(item, align: "center", at: .max)
+            editor.session.selection = item.id
+        case let tab where tab.hasPrefix("tab "):
+            // "tab style" shows the editor's Style tab (item, style, behavior, advanced).
+            UserDefaults.standard.set(String(tab.dropFirst(4)), forKey: "inspector.tab")
         case "dismiss":
             for case let item as PopoverBarItem in items {
                 item.collapse()

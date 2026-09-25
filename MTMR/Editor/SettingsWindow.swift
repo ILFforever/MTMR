@@ -43,6 +43,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             // would do this too, but it keeps the item from being dragged.
             pressMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
                 guard let self = self, event.window === self.window, let point = self.pointerInContent() else { return event }
+                // Only items in the preset as it is now: reloading it (reopening this
+                // window, undo) gives every item a new id, and the old ids' frames
+                // would otherwise still claim the same spots.
+                self.session.chipFrames = self.session.chipFrames.filter { self.document.find($0.key) != nil }
+                self.session.zoneFrames = self.session.zoneFrames.filter { self.document.find($0.key) != nil }
                 if let hit = self.session.chipFrames.first(where: { $0.value.contains(point) })?.key {
                     self.session.set(\.selection, hit)
                 }

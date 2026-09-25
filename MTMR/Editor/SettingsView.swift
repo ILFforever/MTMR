@@ -84,7 +84,7 @@ struct SettingsView: View {
                 .help("Click an item to edit it. Drag to reorder, or drag into the library to remove.")
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 14)
+        .padding(.bottom, 4)
     }
 
     private var leftPane: some View {
@@ -227,6 +227,7 @@ struct SettingsView: View {
     @ViewBuilder
     private func contextMenu(for item: EditorItem) -> some View {
         Button("Duplicate") { document.duplicate(item) }
+        Button("Save to My Items…") { SavedItems.promptSave(item) }
         if document.items.contains(where: { $0 === item }) {
             Menu("Move To") {
                 ForEach(SettingsView.sections, id: \.0) { align, title in

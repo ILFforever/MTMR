@@ -268,6 +268,22 @@ final class PresetDocument: ObservableObject {
         return search(items)
     }
 
+    /// The folder, group or popover an item is inside, if any.
+    func parent(of item: EditorItem) -> EditorItem? {
+        return allContainers().first { $0.children?.contains { $0 === item } ?? false }
+    }
+
+    /// The containers an item is inside, outermost first.
+    func ancestors(of item: EditorItem) -> [EditorItem] {
+        var chain: [EditorItem] = []
+        var current = item
+        while let parent = parent(of: current) {
+            chain.insert(parent, at: 0)
+            current = parent
+        }
+        return chain
+    }
+
     private func allContainers() -> [EditorItem] {
         func collect(_ list: [EditorItem]) -> [EditorItem] {
             return list.filter { $0.isContainer } + list.flatMap { collect($0.children ?? []) }
@@ -411,6 +427,20 @@ struct ItemTypeInfo {
     var supportsBackground: Bool { supportsButtonStyling || type == "cluster" }
     var supportsIcon: Bool { supportsButtonStyling }
     var supportsActions: Bool { !isContainer && !["volume", "brightness", "swipe", "dock", "upnext"].contains(type) }
+    /// What the MTMR look changes for this type, if it has one ("theme": "mtmr").
+    var mtmrLook: String? {
+        switch type {
+        case "battery": return "Text, like ⚡️64% with the time remaining raised beside it"
+        case "play": return "A static play/pause icon"
+        case "mute": return "A static mute icon"
+        case "volume", "brightness": return "A plain slider, without the panel and end icons"
+        case "shellScriptTitledButton", "appleScriptTitledButton", "cpu", "currency", "weather", "yandexWeather",
+             "inputsource", "music", "network":
+            return "Shows ⏳ until its first value, instead of fading in"
+        default: return nil
+        }
+    }
+
     /// Volume and brightness sliders, which tick as they're dragged.
     var isSlider: Bool { type == "volume" || type == "brightness" }
     /// What "active" means for items that know their own on/off state.
@@ -559,6 +589,12 @@ enum ItemCatalog {
     }
 
     static func newItem(_ type: String, align: String, document: PresetDocument) -> EditorItem {
+        // An item saved to My Items: a copy of it, placed where it's added.
+        if let saved = SavedItems.shared.entry(for: type) {
+            var fields = saved.item
+            fields["align"] = align != "center" ? .string(align) : nil
+            return EditorItem(fields: fields, document: document)
+        }
         let info = self.info(for: type)
         var fields = info.defaults
         fields["type"] = .string(type)
@@ -567,6 +603,12 @@ enum ItemCatalog {
             fields["items"] = .array([])
         }
         return EditorItem(fields: fields, document: document)
+    }
+
+    /// Whether a library type (including a saved item) is a folder, group or popover.
+    static func isContainer(_ type: String) -> Bool {
+        if let saved = SavedItems.shared.entry(for: type) { return saved.info.isContainer }
+        return info(for: type).isContainer
     }
 
     /// SF Symbols offered in the icon picker; any other symbol name can be typed in.

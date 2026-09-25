@@ -16,142 +16,187 @@ struct ItemInspector: View {
     /// form every time the window redraws (e.g. on each reorder during a drag).
     let session: EditorSession
 
-    @AppStorage("inspector.appearance") private var appearanceOpen = true
-    @AppStorage("inspector.content") private var contentOpen = true
-    @AppStorage("inspector.items") private var itemsOpen = true
-    @AppStorage("inspector.actions") private var actionsOpen = true
-    @AppStorage("inspector.visibility") private var visibilityOpen = false
-    @AppStorage("inspector.json") private var jsonOpen = false
-    @AppStorage("inspector.batteryPanel") private var batteryPanelOpen = true
-    @AppStorage("inspector.haptics") private var hapticsOpen = false
-    @AppStorage("inspector.onState") private var onStateOpen = false
+    /// The tab shown; stays as you move between items.
+    @AppStorage("inspector.tab") private var tab = Tab.item.rawValue
 
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                    .padding(.bottom, 4)
+    enum Tab: String, CaseIterable {
+        case item, style, behavior, advanced
 
-                // The item's own settings come first; they're what it's for.
-                if !item.info.fields.isEmpty {
-                    InspectorSection(title: item.info.name, symbol: item.info.symbol, isExpanded: $contentOpen) {
-                        ForEach(item.info.fields) { field in
-                            fieldView(field)
-                        }
-                    }
-                }
-
-                if item.type == "battery" {
-                    InspectorSection(title: "Battery Overview", symbol: "rectangle.split.3x1", isExpanded: $batteryPanelOpen) {
-                        BatteryPanelSection(item: item, preview: BatteryPanelPreviewModel.shared)
-                    }
-                }
-
-                if item.info.isContainer {
-                    InspectorSection(title: "Items", symbol: "square.stack", isExpanded: $itemsOpen) {
-                        ContainerItemsEditor(container: item, session: session)
-                    }
-                }
-
-                if item.info.isVisibleOnBar {
-                    InspectorSection(title: "Appearance", symbol: "paintpalette", isExpanded: $appearanceOpen) {
-                        if item.info.supportsIcon && !item.info.fields.contains(where: { $0.path == "title" }) {
-                            TextFieldRow(label: "Title", placeholder: "None", text: string("title"))
-                        }
-                        if item.info.supportsIcon {
-                            SymbolRow(label: "Icon", value: string("symbol"))
-                        }
-                        if item.info.supportsButtonStyling {
-                            ColorRow(label: "Icon color", value: string("iconColor"), suggested: "#FFFFFF")
-                        }
-                        if item.info.supportsBackground {
-                            BackgroundRow(item: item)
-                            if item[string: "background"] != nil {
-                                ShapeRow(item: item)
-                            }
-                        }
-                        if item.info.supportsButtonStyling {
-                            ColorRow(label: "Pressed color", value: string("pressedBackground"), suggested: "#636366")
-                            NumberFieldRow(label: "Font size", placeholder: "15", value: number("fontSize"))
-                            ChoiceRow(label: "Font weight",
-                                      options: ["ultralight", "thin", "light", "regular", "medium", "semibold", "bold", "heavy", "black"],
-                                      value: string("fontWeight"))
-                            ColorRow(label: "Text color", value: string("textColor"), suggested: "#FFFFFF")
-                            ToggleRow(label: "Fixed-width digits", help: "Keeps changing numbers from shifting",
-                                      defaultValue: false, value: bool("monospacedDigits"))
-                        }
-                        NumberFieldRow(label: "Width", placeholder: "Automatic", help: "In points; the bar is about 1000 wide",
-                                       value: number("width"))
-                    }
-                }
-
-                if item.info.supportsButtonStyling {
-                    InspectorSection(title: "On state", symbol: "power", isExpanded: $onStateOpen) {
-                        activeRules
-                        ColorRow(label: "Background", value: string("activeBackground"), suggested: "#30D158")
-                        SymbolRow(label: "Icon", value: string("activeSymbol"))
-                        ColorRow(label: "Icon color", value: string("activeIconColor"), suggested: "#FFFFFF")
-                        ColorRow(label: "Text color", value: string("activeTextColor"), suggested: "#FFFFFF")
-                        TextFieldRow(label: "Title", placeholder: "Same as off", text: string("activeTitle"))
-                    }
-                }
-
-                if item.info.supportsButtonStyling {
-                    InspectorSection(title: "Haptics", symbol: "waveform", isExpanded: $hapticsOpen) {
-                        HapticsEditor(item: item)
-                    }
-                } else if item.info.isSlider {
-                    InspectorSection(title: "Haptics", symbol: "waveform", isExpanded: $hapticsOpen) {
-                        SliderHapticsEditor(item: item)
-                    }
-                }
-
-                if item.info.supportsActions {
-                    InspectorSection(title: "Actions", symbol: "hand.tap", isExpanded: $actionsOpen) {
-                        ActionsEditor(item: item)
-                    }
-                }
-
-                InspectorSection(title: "Visibility", symbol: "eye", isExpanded: $visibilityOpen) {
-                    Text("Only show this item when all of these are true. Leave blank to always show it.")
-                        .font(.caption).foregroundColor(.secondary)
-                        .padding(.vertical, 6)
-                    AppRuleRow(label: "App is", placeholder: "Any app", text: string("when.app"))
-                    AppRuleRow(label: "App is not", placeholder: "No exceptions", text: string("when.notApp"))
-                    TextFieldRow(label: "Time is", placeholder: "Any time", help: "e.g. 09:00-18:00", text: string("when.time"))
-                    TextFieldRow(label: "Command succeeds", placeholder: "No command", help: "Shown while it exits with 0",
-                                 text: string("when.script"))
-                    if item[string: "when.script"] != nil {
-                        NumberFieldRow(label: "Check command every", placeholder: "10", help: "Seconds", value: number("when.every"))
-                    }
-                }
-
-                InspectorSection(title: "JSON", symbol: "curlybraces", isExpanded: $jsonOpen) {
-                    RawJSONEditor(item: item)
-                }
+        var title: String {
+            switch self {
+            case .item: return "Item"
+            case .style: return "Style"
+            case .behavior: return "Behavior"
+            case .advanced: return "Advanced"
             }
-            .padding(20)
         }
     }
 
-    /// When the item is on: toggles know it themselves; other items take the
-    /// same kind of rules as Visibility.
-    @ViewBuilder
-    private var activeRules: some View {
-        if let state = item.info.builtInActiveState {
-            Text("On while \(state). These settings change how it looks then; anything left blank looks as it does when off.")
-                .font(.caption).foregroundColor(.secondary)
-                .padding(.vertical, 6)
-        } else {
-            Text("On while all of these are true (leave them all blank and it's never on). The settings below change how it looks then.")
-                .font(.caption).foregroundColor(.secondary)
-                .padding(.vertical, 6)
-            AppRuleRow(label: "App is", placeholder: "Any app", text: string("activeWhen.app"))
-            TextFieldRow(label: "Time is", placeholder: "Any time", help: "e.g. 09:00-18:00",
-                         text: string("activeWhen.time"))
-            TextFieldRow(label: "Command succeeds", placeholder: "No command", help: "Active while it exits with 0",
-                         text: string("activeWhen.script"))
+    /// Items that aren't drawn (swipe gestures) have no Style.
+    private var tabs: [Tab] {
+        item.info.isVisibleOnBar ? Tab.allCases : [.item, .behavior, .advanced]
+    }
+
+    private var shownTab: Tab {
+        let chosen = Tab(rawValue: tab) ?? .item
+        return tabs.contains(chosen) ? chosen : .item
+    }
+
+    /// Which way the last tab change went, so the content slides in from that side.
+    private let forwardState = State(initialValue: true)
+
+    private func select(_ new: Tab) {
+        guard new != shownTab else { return }
+        forwardState.wrappedValue = (tabs.firstIndex(of: new) ?? 0) > (tabs.firstIndex(of: shownTab) ?? 0)
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) { tab = new.rawValue }
+    }
+
+    private var slide: AnyTransition {
+        let forward = forwardState.wrappedValue
+        return .asymmetric(insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),
+                           removal: .move(edge: forward ? .leading : .trailing).combined(with: .opacity))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 14) {
+                header
+                TabSwitcher(selection: shownTab, options: tabs.map { ($0, $0.title) }, select: select)
+            }
+            .padding([.horizontal, .top], 20)
+            .padding(.bottom, 12)
+            Divider()
+            ScrollView {
+                ZStack(alignment: .topLeading) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        switch shownTab {
+                        case .item: itemTab
+                        case .style: styleTab
+                        case .behavior: behaviorTab
+                        case .advanced: advancedTab
+                        }
+                    }
+                    .padding(20)
+                    .id(shownTab)
+                    .transition(slide)
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .clipped()
         }
+    }
+
+    // MARK: Tabs
+
+    /// What the item is: its own settings, the Battery Overview, a container's items.
+    @ViewBuilder
+    private var itemTab: some View {
+        if !item.info.fields.isEmpty {
+            InspectorGroup(title: item.info.name, symbol: item.info.symbol) {
+                ForEach(item.info.fields) { field in
+                    fieldView(field)
+                }
+            }
+        }
+        if item.type == "battery" {
+            InspectorGroup(title: "Battery Overview", symbol: "rectangle.split.3x1") {
+                BatteryPanelSection(item: item, preview: BatteryPanelPreviewModel.shared)
+            }
+        }
+        if item.info.isContainer {
+            InspectorGroup(title: "Items", symbol: "square.stack") {
+                ContainerItemsEditor(container: item, session: session)
+            }
+        }
+        if item.info.fields.isEmpty && item.type != "battery" && !item.info.isContainer {
+            Text("\(item.info.name) has no settings of its own. How it looks is under Style, and what it does under Behavior.")
+                .foregroundColor(.secondary)
+        }
+    }
+
+    /// How it looks: only the styles it sets (plus the essentials), and a menu to add others.
+    @ViewBuilder
+    private var styleTab: some View {
+        if let classic = item.info.mtmrLook {
+            InspectorGroup(title: "Theme", symbol: "sparkles") {
+                FieldRow(label: "Design", help: item[string: "theme"] == "mtmr" ? classic : "MTMR: \(classic.prefix(1).lowercased() + classic.dropFirst())") {
+                    Picker("", selection: Binding(get: { item[string: "theme"] ?? "stripe" },
+                                                  set: { item[string: "theme"] = $0 == "stripe" ? nil : $0 })) {
+                        Text("Stripe").tag("stripe")
+                        Text("MTMR").tag("mtmr")
+                    }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+                }
+            }
+        }
+        if item.info.supportsIcon || item.info.supportsBackground {
+            StyleEditor(item: item, whileOn: false).id(item.id)
+        } else if item.info.mtmrLook == nil {
+            Text("\(item.info.name) doesn't take styling. Its width is under Advanced.")
+                .foregroundColor(.secondary)
+        }
+        if item.info.supportsButtonStyling {
+            if hasOnState {
+                StyleEditor(item: item, whileOn: true).id(item.id)
+            } else {
+                Text("To give it a different look while it's on, add an On when condition under Behavior.")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+        }
+    }
+
+    /// What it does, and when it shows or is on.
+    @ViewBuilder
+    private var behaviorTab: some View {
+        if item.info.supportsActions {
+            InspectorGroup(title: "Actions", symbol: "hand.tap") {
+                ActionsEditor(item: item).id(item.id)
+            }
+        }
+        InspectorGroup(title: "Shows when", symbol: "eye") {
+            ConditionsEditor(item: item, base: "when", verb: "shows",
+                             empty: "Always shows. Add a condition to show it only sometimes.").id(item.id)
+        }
+        if item.info.supportsButtonStyling {
+            InspectorGroup(title: "On when", symbol: "power") {
+                if let state = item.info.builtInActiveState {
+                    Text("Built in: on while \(state). A condition here decides it instead.")
+                        .font(.caption).foregroundColor(.secondary)
+                        .padding(.vertical, 8)
+                }
+                ConditionsEditor(item: item, base: "activeWhen", verb: "is on",
+                                 empty: item.info.builtInActiveState == nil
+                                     ? "Never on. Add a condition to give it an on state, with its own look under Style."
+                                     : "").id(item.id)
+            }
+        }
+        if item.info.supportsButtonStyling {
+            InspectorGroup(title: "Haptics", symbol: "waveform") {
+                HapticsEditor(item: item)
+            }
+        } else if item.info.isSlider {
+            InspectorGroup(title: "Haptics", symbol: "waveform") {
+                SliderHapticsEditor(item: item)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var advancedTab: some View {
+        if item.info.isVisibleOnBar {
+            InspectorGroup(title: "Size", symbol: "arrow.left.and.right") {
+                NumberFieldRow(label: "Width", placeholder: "Automatic", help: "In points; the bar is about 1000 wide",
+                               value: number("width"))
+            }
+        }
+        InspectorGroup(title: "JSON", symbol: "curlybraces") {
+            RawJSONEditor(item: item)
+        }
+    }
+
+    /// Toggles, and items with an "On when" condition.
+    private var hasOnState: Bool {
+        item.info.builtInActiveState != nil || item.fields["activeWhen"] != nil
     }
 
     private var header: some View {
@@ -164,7 +209,7 @@ struct ItemInspector: View {
                 .background(RoundedRectangle(cornerRadius: EditorStyle.boxRadius).fill(Color(white: 0.16)))
                 .overlay(RoundedRectangle(cornerRadius: EditorStyle.boxRadius).stroke(Color.white.opacity(0.08)))
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.displayName).font(.title2.weight(.semibold))
+                title
                 Text(subtitle).foregroundColor(.secondary)
             }
             Spacer()
@@ -180,7 +225,50 @@ struct ItemInspector: View {
                 .fixedSize()
                 .help("Position on the bar. You can also drag the item there.")
             }
+            itemMenu
         }
+    }
+
+    /// Save to My Items, duplicate or remove the item shown (inside a folder or group too).
+    private var itemMenu: some View {
+        Menu {
+            Button("Save to My Items…") { SavedItems.promptSave(item) }
+            Button("Duplicate") { item.document?.duplicate(item) }
+            Divider()
+            Button("Remove") {
+                session.selection = nil
+                withAnimation { item.document?.remove(item) }
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 16))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Save to My Items, duplicate or remove")
+    }
+
+    /// The item's name, after the containers it's inside ("Folder / Hold to sleep");
+    /// click a container's name to go back to it.
+    private var title: some View {
+        let ancestors = item.document?.ancestors(of: item) ?? []
+        return HStack(spacing: 6) {
+            ForEach(ancestors, id: \.id) { parent in
+                Button(action: { session.selection = parent.id }) {
+                    Text(parent.displayName).foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .onHover { inside in
+                    if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+                }
+                .help("Back to \(parent.displayName)")
+                Text("/").foregroundColor(Color.secondary.opacity(0.6))
+            }
+            Text(item.displayName)
+        }
+        .font(.title2.weight(.semibold))
+        .lineLimit(1)
     }
 
     /// e.g. "Status · Network Speed", without repeating a name the title already shows.
@@ -222,6 +310,257 @@ struct ItemInspector: View {
     }
 }
 
+// MARK: - Style
+
+/// The Style tab's rows: the essentials (icon, background) always, every other
+/// style only once the item sets it, and an "Add Style" menu for the rest.
+/// With `whileOn`, the same for how the item looks while it's on.
+struct StyleEditor: View {
+    @ObservedObject var item: EditorItem
+    let whileOn: Bool
+    /// Rows added from the menu but not set yet; they stay until the item changes.
+    private let revealedState = State(initialValue: Set<Row>())
+    private var revealed: Set<Row> {
+        get { revealedState.wrappedValue }
+        nonmutating set { revealedState.wrappedValue = newValue }
+    }
+
+    enum Row: String, CaseIterable {
+        case title, icon, iconColor, background, fontSize, fontWeight, textColor, digits, pressed
+        case onBackground, onIcon, onIconColor, onTextColor, onTitle
+
+        var name: String {
+            switch self {
+            case .title, .onTitle: return "Title"
+            case .icon, .onIcon: return "Icon"
+            case .iconColor, .onIconColor: return "Icon color"
+            case .background, .onBackground: return "Background"
+            case .fontSize: return "Font size"
+            case .fontWeight: return "Font weight"
+            case .textColor, .onTextColor: return "Text color"
+            case .digits: return "Fixed-width digits"
+            case .pressed: return "Pressed color"
+            }
+        }
+
+        /// The preset keys a row sets; it shows once any of them is set.
+        var keys: [String] {
+            switch self {
+            case .title: return ["title"]
+            case .icon: return ["symbol"]
+            case .iconColor: return ["iconColor"]
+            case .background: return ["background", "bordered", "style", "cornerRadius"]
+            case .fontSize: return ["fontSize"]
+            case .fontWeight: return ["fontWeight"]
+            case .textColor: return ["textColor"]
+            case .digits: return ["monospacedDigits"]
+            case .pressed: return ["pressedBackground"]
+            case .onBackground: return ["activeBackground"]
+            case .onIcon: return ["activeSymbol"]
+            case .onIconColor: return ["activeIconColor"]
+            case .onTextColor: return ["activeTextColor"]
+            case .onTitle: return ["activeTitle"]
+            }
+        }
+    }
+
+    /// The rows this item can have, in order, and which are always shown.
+    private var available: [(row: Row, essential: Bool)] {
+        let info = item.info
+        if whileOn {
+            return [(.onBackground, false), (.onIcon, false), (.onIconColor, false), (.onTextColor, false), (.onTitle, false)]
+        }
+        var rows: [(Row, Bool)] = []
+        let hasTitleField = info.fields.contains { $0.path == "title" }
+        if info.supportsIcon && !hasTitleField { rows.append((.title, false)) }
+        if info.supportsIcon { rows.append((.icon, true)) }
+        if info.supportsButtonStyling { rows.append((.iconColor, false)) }
+        if info.supportsBackground { rows.append((.background, true)) }
+        if info.supportsButtonStyling {
+            rows += [(.fontSize, false), (.fontWeight, false), (.textColor, false), (.digits, false), (.pressed, false)]
+        }
+        return rows
+    }
+
+    private func isSet(_ row: Row) -> Bool {
+        row.keys.contains { item.fields[path: $0] != nil }
+    }
+
+    private var shown: [(row: Row, essential: Bool)] {
+        available.filter { $0.essential || isSet($0.row) || revealed.contains($0.row) }
+    }
+
+    private var addable: [Row] {
+        available.filter { !$0.essential && !isSet($0.row) && !revealed.contains($0.row) }.map { $0.row }
+    }
+
+    var body: some View {
+        InspectorGroup(title: whileOn ? "While on" : "Look", symbol: whileOn ? "power" : "paintpalette", accessory: { addMenu }) {
+            if shown.isEmpty {
+                Text(whileOn ? "Looks the same as when it's off. Add what should change while it's on."
+                             : "Nothing set yet.")
+                    .font(.caption).foregroundColor(.secondary)
+                    .padding(.vertical, 10)
+            }
+            ForEach(shown, id: \.row) { entry in
+                if entry.essential {
+                    rowView(entry.row)
+                } else {
+                    RemovableRow(remove: { remove(entry.row) }) { rowView(entry.row) }
+                }
+            }
+        }
+    }
+
+    private var addMenu: some View {
+        Menu {
+            ForEach(addable, id: \.self) { row in
+                Button(row.name) { revealed.insert(row) }
+            }
+            if !addable.isEmpty {
+                Divider()
+                Button("Show All") { revealed.formUnion(addable) }
+            }
+        } label: {
+            Label(whileOn ? "Add On Look" : "Add Style", systemImage: "plus")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .disabled(addable.isEmpty)
+    }
+
+    private func remove(_ row: Row) {
+        for key in row.keys { item.setRaw(key, nil) }
+        revealed.remove(row)
+    }
+
+    @ViewBuilder
+    private func rowView(_ row: Row) -> some View {
+        switch row {
+        case .title: TextFieldRow(label: "Title", placeholder: "None", text: string("title"))
+        case .icon: SymbolRow(label: "Icon", value: string("symbol"))
+        case .iconColor: ColorRow(label: "Icon color", value: string("iconColor"), suggested: "#FFFFFF")
+        case .background:
+            BackgroundRow(item: item)
+            if item[string: "background"] != nil { ShapeRow(item: item) }
+        case .fontSize: NumberFieldRow(label: "Font size", placeholder: "15", value: number("fontSize"))
+        case .fontWeight:
+            ChoiceRow(label: "Font weight",
+                      options: ["ultralight", "thin", "light", "regular", "medium", "semibold", "bold", "heavy", "black"],
+                      value: string("fontWeight"))
+        case .textColor: ColorRow(label: "Text color", value: string("textColor"), suggested: "#FFFFFF")
+        case .digits:
+            ToggleRow(label: "Fixed-width digits", help: "Keeps changing numbers from shifting",
+                      defaultValue: false, value: Binding(get: { item[bool: "monospacedDigits"] }, set: { item[bool: "monospacedDigits"] = $0 }))
+        case .pressed: ColorRow(label: "Pressed color", value: string("pressedBackground"), suggested: "#636366")
+        case .onBackground: ColorRow(label: "Background", value: string("activeBackground"), suggested: "#30D158")
+        case .onIcon: SymbolRow(label: "Icon", value: string("activeSymbol"))
+        case .onIconColor: ColorRow(label: "Icon color", value: string("activeIconColor"), suggested: "#FFFFFF")
+        case .onTextColor: ColorRow(label: "Text color", value: string("activeTextColor"), suggested: "#FFFFFF")
+        case .onTitle: TextFieldRow(label: "Title", placeholder: "Same as off", text: string("activeTitle"))
+        }
+    }
+
+    private func string(_ path: String) -> Binding<String> {
+        Binding(get: { item[string: path] ?? "" }, set: { item[string: path] = $0 })
+    }
+
+    private func number(_ path: String) -> Binding<Double?> {
+        Binding(get: { item[number: path] }, set: { item[number: path] = $0 })
+    }
+}
+
+// MARK: - Conditions
+
+/// "Shows when" / "On when": only the conditions the item has, each removable,
+/// and a menu to add the others. All of them must hold.
+struct ConditionsEditor: View {
+    @ObservedObject var item: EditorItem
+    /// "when" or "activeWhen".
+    let base: String
+    /// "shows" or "is on", for the help text.
+    let verb: String
+    let empty: String
+    private let revealedState = State(initialValue: Set<String>())
+    private var revealed: Set<String> {
+        get { revealedState.wrappedValue }
+        nonmutating set { revealedState.wrappedValue = newValue }
+    }
+
+    static let kinds = [("app", "App is"), ("notApp", "App is not"), ("time", "Time is"), ("script", "Command succeeds")]
+
+    private func path(_ kind: String) -> String { "\(base).\(kind)" }
+
+    private var shown: [(String, String)] {
+        ConditionsEditor.kinds.filter { item[string: path($0.0)] != nil || revealed.contains($0.0) }
+    }
+
+    private var addable: [(String, String)] {
+        ConditionsEditor.kinds.filter { item[string: path($0.0)] == nil && !revealed.contains($0.0) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if shown.isEmpty && !empty.isEmpty {
+                Text(empty).font(.caption).foregroundColor(.secondary).padding(.vertical, 10)
+            } else if shown.count > 1 {
+                Text("It \(verb) while all of these are true.").font(.caption).foregroundColor(.secondary).padding(.top, 8)
+            }
+            ForEach(shown, id: \.0) { kind, label in
+                RemovableRow(remove: { remove(kind) }) { conditionRow(kind, label) }
+            }
+            Menu {
+                ForEach(addable, id: \.0) { kind, label in
+                    Button(label) { revealed.insert(kind) }
+                }
+            } label: {
+                Label("Add Condition", systemImage: "plus")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .disabled(addable.isEmpty)
+            .padding(.vertical, 8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func conditionRow(_ kind: String, _ label: String) -> some View {
+        switch kind {
+        case "app", "notApp":
+            AppRuleRow(label: label, placeholder: "Safari", text: string(path(kind)))
+        case "time":
+            TextFieldRow(label: label, placeholder: "09:00-18:00", text: string(path(kind)))
+        default:
+            FieldRow(label: label, help: "Holds while it exits with 0") {
+                HStack(spacing: 6) {
+                    TextField("pgrep -q Zoom", text: string(path(kind)))
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(width: 220)
+                    Text("every").foregroundColor(.secondary)
+                    TextField("10", value: Binding(get: { item[number: "\(base).every"] },
+                                                  set: { item[number: "\(base).every"] = $0 }),
+                              formatter: NumberFormatter())
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 44)
+                    Text("s").foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+
+    private func remove(_ kind: String) {
+        item[string: path(kind)] = nil
+        if kind == "script" { item[number: "\(base).every"] = nil }
+        revealed.remove(kind)
+    }
+
+    private func string(_ path: String) -> Binding<String> {
+        Binding(get: { item[string: path] ?? "" }, set: { item[string: path] = $0 })
+    }
+}
+
 // MARK: - Actions
 
 struct ActionsEditor: View {
@@ -242,32 +581,103 @@ struct ActionsEditor: View {
         item.fields["action"] != nil || item.fields["longAction"] != nil
     }
 
+    /// The action open for editing; the others show as one readable line each.
+    private let expandedState = State<Int?>(initialValue: nil)
+    private var expanded: Int? {
+        get { expandedState.wrappedValue }
+        nonmutating set { expandedState.wrappedValue = newValue }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 0) {
             if hasLegacyActions {
-                Label("This item also uses older \"action\"/\"longAction\" keys. Edit those in the JSON section.",
+                Label("This item also uses older \"action\"/\"longAction\" keys. Edit those under Advanced › JSON.",
                       systemImage: "info.circle")
                     .font(.caption).foregroundColor(.secondary)
+                    .padding(.vertical, 8)
             }
             if actions.isEmpty {
-                Text(hasBuiltInAction ? "Uses its built-in action. Add one to override it." : "No actions yet.")
-                    .foregroundColor(.secondary)
+                Text(hasBuiltInAction ? "Uses its built-in action. An action here replaces it for the same trigger." : "No actions yet.")
+                    .font(.caption).foregroundColor(.secondary)
+                    .padding(.vertical, 10)
             }
             ForEach(actions.indices, id: \.self) { index in
-                actionCard(index)
+                VStack(alignment: .leading, spacing: 8) {
+                    summaryLine(index)
+                    if expanded == index {
+                        actionCard(index)
+                    }
+                }
+                .padding(.vertical, 6)
+                Divider().opacity(0.5)
             }
             Button(action: addAction) {
                 Label("Add Action", systemImage: "plus")
             }
-            .padding(.bottom, 6)
+            .buttonStyle(.borderless)
+            .padding(.vertical, 8)
         }
-        .padding(.top, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// "Tap → Run open -a Safari": click to open or close its editor.
+    private func summaryLine(_ index: Int) -> some View {
+        let action = actions[index]
+        let trigger = ActionsEditor.triggers.first { $0.0 == action["trigger"]?.string }?.1 ?? "Tap"
+        let (verb, detail) = describe(action)
+        return HStack(spacing: 8) {
+            Button(action: { expanded = expanded == index ? nil : index }) {
+                HStack(spacing: 8) {
+                    Text(trigger).fontWeight(.semibold).frame(width: 100, alignment: .leading)
+                    Image(systemName: "arrow.right").font(.caption).foregroundColor(.secondary)
+                    Text(verb).foregroundColor(.secondary)
+                    if !detail.isEmpty {
+                        Text(detail)
+                            .font(.system(.callout, design: .monospaced))
+                            .lineLimit(1).truncationMode(.middle)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.08)))
+                    }
+                    Spacer()
+                    Image(systemName: expanded == index ? "chevron.up" : "chevron.down")
+                        .font(.caption).foregroundColor(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Button(action: { removeAction(index) }) { Image(systemName: "trash") }
+                .buttonStyle(.borderless)
+                .help("Remove action")
+        }
+    }
+
+    /// What an action does, in words and its key detail: ("Run", "open -a Safari").
+    private func describe(_ action: [String: JSONValue]) -> (String, String) {
+        switch action["action"]?.string ?? "shellScript" {
+        case "appleScript":
+            let first = action["actionAppleScript"]?.object?["inline"]?.string?.split(separator: "\n").first.map(String.init) ?? ""
+            return ("Run AppleScript", first)
+        case "openUrl":
+            return ("Open", action["url"]?.string ?? "")
+        case "keyPress":
+            return ("Press key code", action["keycode"]?.number.map { String(Int($0)) } ?? "")
+        case "hidKey":
+            let code = Int(action["keycode"]?.number ?? -1)
+            return ("Press", ActionsEditor.hidKeys.first { $0.0 == code }?.1 ?? "a system key")
+        default:
+            if isShellCommandForm(action) {
+                return ("Run", action["shellArguments"]?.array?.last?.string ?? "")
+            }
+            let exe = action["executablePath"]?.string ?? ""
+            let args = action["shellArguments"]?.array?.compactMap { $0.string }.joined(separator: " ") ?? ""
+            return ("Run", [exe, args].filter { !$0.isEmpty }.joined(separator: " "))
+        }
     }
 
     private var hasBuiltInAction: Bool {
         ["escape", "delete", "volumeUp", "volumeDown", "mute", "play", "next", "previous", "brightnessUp",
-         "brightnessDown", "sleep", "displaySleep", "cpu", "dnd", "nightShift", "darkMode", "close"].contains(item.type)
+         "brightnessDown", "sleep", "displaySleep", "cpu", "dnd", "nightShift", "darkMode", "close", "battery", "music",
+         "pomodoro", "inputsource", "illuminationUp", "illuminationDown", "exitTouchbar"].contains(item.type)
     }
 
     private func actionCard(_ index: Int) -> some View {
@@ -284,11 +694,6 @@ struct ActionsEditor: View {
                 }
                 .labelsHidden().frame(width: 190)
                 Spacer()
-                Button(action: { removeAction(index) }) {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(.borderless)
-                .help("Remove action")
             }
             switch kind {
             case "shellScript":
@@ -344,9 +749,11 @@ struct ActionsEditor: View {
         list.append(["trigger": .string(trigger), "action": .string("shellScript"),
                      "executablePath": .string("/bin/sh"), "shellArguments": .array([.string("-c"), .string("")])])
         item.setRaw("actions", .array(list.map { .object($0) }))
+        expanded = list.count - 1 // open the new one for editing
     }
 
     private func removeAction(_ index: Int) {
+        if expanded == index { expanded = nil } else if let open = expanded, open > index { expanded = open - 1 }
         var list = actions
         list.remove(at: index)
         item.setRaw("actions", list.isEmpty ? nil : .array(list.map { .object($0) }))

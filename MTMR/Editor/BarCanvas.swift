@@ -105,6 +105,7 @@ struct BarCanvas: View {
     private func chipMenu(_ item: EditorItem) -> some View {
         Button("Edit") { session.selection = item.id }
         Button("Duplicate") { document.duplicate(item) }
+        Button("Save to My Items…") { SavedItems.promptSave(item) }
         Menu("Move To") {
             ForEach(BarCanvas.positions, id: \.0) { align, title in
                 Button(title) { withAnimation { document.place(item, align: align, at: .max) } }
@@ -119,14 +120,67 @@ struct BarCanvas: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
-            zone("left")
-            zone("center").frame(maxWidth: .infinity)
-            zone("right")
+        VStack(spacing: 4) {
+            HStack(spacing: 6) {
+                zone("left")
+                zone("center").frame(maxWidth: .infinity)
+                zone("right")
+            }
+            .padding(6)
+            .frame(height: 52)
+            .background(RoundedRectangle(cornerRadius: EditorStyle.barRadius).fill(Color.black))
+            selectionActions
         }
-        .padding(6)
-        .frame(height: 52)
-        .background(RoundedRectangle(cornerRadius: EditorStyle.barRadius).fill(Color.black))
+    }
+
+    /// A tab hanging from the selected item's outline, in the same blue and joined
+    /// to it, with the same menu as right-clicking the item (Duplicate, Save to My
+    /// Items, Move To, Remove), for people who wouldn't think to right-click.
+    private var selectionActions: some View {
+        GeometryReader { geometry in
+            if session.dragging == nil,
+               let id = session.selection, let item = document.items.first(where: { $0.id == id }),
+               let chip = session.chipFrames[id] {
+                let row = geometry.frame(in: .global)
+                // From just inside the outline's bottom edge (drawn 2pt outside the item)
+                // down into this row.
+                let top = chip.maxY + 1 - row.minY
+                // Just deep enough for the dots (2pt above, 12pt dots, 2pt below).
+                let bottom = top + 16
+                ItemActionsTab(help: "More for \(item.displayName): duplicate, save to My Items, move, remove") {
+                    showMenu(for: item)
+                }
+                .frame(width: ItemActionsTab.width, height: bottom - top)
+                .position(x: min(max(chip.midX - row.minX, 24), geometry.size.width - 24), y: (top + bottom) / 2)
+                .transition(.opacity)
+            }
+        }
+        .frame(height: 10)
+        .animation(.easeOut(duration: 0.12), value: session.selection)
+    }
+
+    /// The pill's menu: the same commands as right-clicking the item.
+    private func showMenu(for item: EditorItem) {
+        let menu = NSMenu()
+        menu.addItem(ClosureMenuItem("Duplicate") { document.duplicate(item) })
+        menu.addItem(ClosureMenuItem("Save to My Items…") { SavedItems.promptSave(item) })
+        let move = NSMenuItem(title: "Move To", action: nil, keyEquivalent: "")
+        move.submenu = NSMenu()
+        for (align, title) in BarCanvas.positions {
+            let entry = ClosureMenuItem(title) { withAnimation { document.place(item, align: align, at: .max) } }
+            entry.isEnabled = item.align != align
+            move.submenu?.addItem(entry)
+        }
+        menu.addItem(move)
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem("Remove") {
+            if session.selection == item.id { session.selection = nil }
+            withAnimation { document.remove(item) }
+        })
+        menu.autoenablesItems = false
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow, let view = window.contentView else { return }
+        let point = view.convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
+        menu.popUp(positioning: nil, at: point, in: view)
     }
 
     private func zone(_ align: String) -> some View {
@@ -209,6 +263,9 @@ struct DropPlaceholder: View {
 /// The item as it looks on the bar: a live snapshot of the real item when there
 /// is one, otherwise an approximation (icon, label, background).
 struct BarChip: View {
+    /// The selection outline (and the "•••" tab joined to it).
+    static let outlineWidth: CGFloat = 3
+
     @ObservedObject var item: EditorItem
     let snapshot: NSImage?
     let isSelected: Bool
@@ -245,7 +302,7 @@ struct BarChip: View {
             Image(nsImage: snapshot)
                 .frame(width: snapshot.size.width, height: snapshot.size.height)
                 .overlay(RoundedRectangle(cornerRadius: radius)
-                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: BarChip.outlineWidth)
                     .padding(-2))
                 .contentShape(Rectangle())
                 .help(item.displayName)
@@ -263,7 +320,7 @@ struct BarChip: View {
         .frame(height: 30)
         .background(RoundedRectangle(cornerRadius: radius)
             .strokeBorder(isSelected ? Color.accentColor : Color.gray.opacity(0.7),
-                          style: StrokeStyle(lineWidth: isSelected ? 2 : 1, dash: [3, 3])))
+                          style: StrokeStyle(lineWidth: isSelected ? BarChip.outlineWidth : 1, dash: [3, 3])))
         .contentShape(Rectangle())
         .help("An empty group. Drag items from the library or the bar onto it.")
     }
@@ -287,7 +344,7 @@ struct BarChip: View {
         .background(RoundedRectangle(cornerRadius: radius)
             .fill(background ?? (item.fields["bordered"]?.bool == false ? Color.clear : Color(white: 0.22))))
         .overlay(RoundedRectangle(cornerRadius: radius)
-            .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2))
+            .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: BarChip.outlineWidth))
         .contentShape(Rectangle())
         .help(item.displayName)
     }
@@ -319,7 +376,7 @@ struct BarChip: View {
         .background(RoundedRectangle(cornerRadius: radius)
             .fill(background ?? (item.fields["bordered"]?.bool == false ? Color.clear : Color(white: 0.22))))
         .overlay(RoundedRectangle(cornerRadius: radius)
-            .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2))
+            .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: BarChip.outlineWidth))
         .contentShape(Rectangle())
         .help(item.displayName)
     }
@@ -448,7 +505,7 @@ struct GroupDropDelegate: DropDelegate {
 
     private var accepts: Bool {
         switch session.dragging {
-        case let .new(type)?: return !ItemCatalog.info(for: type).isContainer
+        case let .new(type)?: return !ItemCatalog.isContainer(type)
         case .move?: return movingItem != nil
         case nil: return false
         }
@@ -518,13 +575,31 @@ struct ItemLibrary: View {
     let document: PresetDocument
     @ObservedObject var session: EditorSession
     let snapshots: ItemSnapshotModel
+    @ObservedObject private var saved = SavedItems.shared
 
     var body: some View {
         let targeted = session.targetZone == "library"
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    if matches.isEmpty {
+                    if !savedMatches.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(SavedItems.category)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.secondary)
+                                .padding(.leading, 2)
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)], spacing: 8) {
+                                ForEach(savedMatches) { entry in
+                                    tile(savedInfo(entry))
+                                        .contextMenu {
+                                            Button("Rename…") { SavedItems.promptRename(entry) }
+                                            Button("Delete…") { SavedItems.confirmDelete(entry) }
+                                        }
+                                }
+                            }
+                        }
+                    }
+                    if matches.isEmpty && savedMatches.isEmpty {
                         Text("No items match \u{201C}\(session.search)\u{201D}")
                             .foregroundColor(.secondary)
                             .frame(maxWidth: .infinity)
@@ -539,18 +614,7 @@ struct ItemLibrary: View {
                                 .padding(.leading, 2)
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)], spacing: 8) {
                                 ForEach(matches.filter { $0.category == category }, id: \.type) { info in
-                                    LibraryTile(info: info, preview: snapshots.preview, onHover: { hovering in
-                                        hoverChanged(info.type, hovering)
-                                    })
-                                    .onDrag({
-                                        session.dragging = .new(type: info.type)
-                                        document.holdsSaves = true
-                                        snapshots.beginPreview(of: info.type)
-                                        return DragPayload.new(type: info.type).provider
-                                    }, preview: {
-                                        LibraryDragImage(info: info, preview: snapshots.preview)
-                                    })
-                                        .onTapGesture(count: 2) { add(info.type) }
+                                    tile(info)
                                 }
                             }
                         }
@@ -572,6 +636,37 @@ struct ItemLibrary: View {
             .strokeBorder(Color.red.opacity(targeted ? 0.6 : 0), lineWidth: 2)
             .padding(4))
         .onDrop(of: [.plainText], delegate: LibraryDropDelegate(document: document, session: session))
+    }
+
+    /// A library tile: drag it onto the bar, or double-click to add it.
+    private func tile(_ info: ItemTypeInfo) -> some View {
+        LibraryTile(info: info, preview: snapshots.preview, onHover: { hovering in
+            hoverChanged(info.type, hovering)
+        })
+        .onDrag({
+            session.dragging = .new(type: info.type)
+            document.holdsSaves = true
+            snapshots.beginPreview(of: info.type)
+            return DragPayload.new(type: info.type).provider
+        }, preview: {
+            LibraryDragImage(info: info, preview: snapshots.preview)
+        })
+        .onTapGesture(count: 2) { add(info.type) }
+    }
+
+    /// A saved item as a library tile.
+    private func savedInfo(_ entry: SavedItems.Entry) -> ItemTypeInfo {
+        ItemTypeInfo(type: entry.libraryType, name: entry.name, symbol: entry.symbol, category: SavedItems.category,
+                     defaults: [:], fields: [])
+    }
+
+    /// Saved items whose name or type contains the search text.
+    private var savedMatches: [SavedItems.Entry] {
+        let query = session.search.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return saved.entries }
+        return saved.entries.filter { entry in
+            [entry.name, entry.info.name].contains { $0.localizedCaseInsensitiveContains(query) }
+        }
     }
 
     /// Pointing at a tile builds its preview, so a drag from it shows the item's
@@ -687,5 +782,76 @@ struct LibraryDropDelegate: DropDelegate {
             }
             session.endDrag(document)
         }
+    }
+}
+
+/// The "•••" tab under the selected item: the selection outline's blue, with
+/// small inward curves where it meets the outline, so the two read as one shape.
+struct ItemActionsTab: View {
+    static let width: CGFloat = 38
+    let help: String
+    let action: () -> Void
+    private let hovering = State(initialValue: false)
+
+    var body: some View {
+        Button(action: action) {
+            ZStack(alignment: .top) {
+                TabShape(flare: 4, radius: 7)
+                    .fill(Color.accentColor.opacity(hovering.wrappedValue ? 1 : 0.92))
+                // Right under the outline, so it reads as part of the selection.
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundColor(.white)
+                    .frame(height: 12)
+                    .padding(.top, 2)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { inside in
+            withAnimation(.easeOut(duration: 0.1)) { hovering.wrappedValue = inside }
+        }
+        .help(help)
+    }
+}
+
+/// A tab hanging from a line: square top edge that flares out to meet the line,
+/// rounded bottom.
+struct TabShape: Shape {
+    let flare: CGFloat
+    let radius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let f = flare, r = min(radius, (rect.width - 2 * flare) / 2, rect.height / 2)
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addQuadCurve(to: CGPoint(x: rect.minX + f, y: rect.minY + f), control: CGPoint(x: rect.minX + f, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.minX + f, y: rect.maxY - r))
+        path.addQuadCurve(to: CGPoint(x: rect.minX + f + r, y: rect.maxY), control: CGPoint(x: rect.minX + f, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.maxX - f - r, y: rect.maxY))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX - f, y: rect.maxY - r), control: CGPoint(x: rect.maxX - f, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.maxX - f, y: rect.minY + f))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.minY), control: CGPoint(x: rect.maxX - f, y: rect.minY))
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// An NSMenuItem that runs a closure.
+final class ClosureMenuItem: NSMenuItem {
+    private let handler: () -> Void
+
+    init(_ title: String, handler: @escaping () -> Void) {
+        self.handler = handler
+        super.init(title: title, action: #selector(run), keyEquivalent: "")
+        target = self
+    }
+
+    required init(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    @objc private func run() {
+        handler()
     }
 }
